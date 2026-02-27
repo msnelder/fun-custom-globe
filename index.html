@@ -42,9 +42,39 @@
     const globe = new THREE.Group();
     scene.add(globe);
 
-    // ─── Rim / glimmer (Fresnel shader) ─────────────────────────────────────
-    // No base sphere — globe is transparent so back-side dots show through.
     const sphereGeo = new THREE.SphereGeometry(1, 64, 64);
+
+    // ─── Base sphere with inner glow ─────────────────────────────────────────
+    // A directional gradient — dark on most of the sphere, soft glow on one
+    // side — fixed in view space so it doesn't rotate with the globe.
+    globe.add(new THREE.Mesh(
+      sphereGeo,
+      new THREE.ShaderMaterial({
+        vertexShader: `
+          varying vec3 vNormal;
+          void main() {
+            // View-space normal — stays fixed relative to camera as globe spins
+            vNormal = normalize(normalMatrix * normal);
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: `
+          varying vec3 vNormal;
+          void main() {
+            // Glow direction: upper-left, toward viewer (matches screenshot)
+            vec3 glowDir = normalize(vec3(-0.55, 0.25, 0.85));
+            float glow   = max(0.0, dot(vNormal, glowDir));
+            glow         = pow(glow, 2.0);
+
+            vec3 dark    = vec3(0.020, 0.025, 0.040); // near-black base
+            vec3 lit     = vec3(0.160, 0.190, 0.280); // soft blue-grey glow
+            gl_FragColor = vec4(mix(dark, lit, glow * 0.75), 1.0);
+          }
+        `,
+      })
+    ));
+
+    // ─── Rim / glimmer (Fresnel shader) ──────────────────────────────────────
     globe.add(new THREE.Mesh(
       sphereGeo,
       new THREE.ShaderMaterial({
@@ -58,16 +88,16 @@
         fragmentShader: `
           varying vec3 vNormal;
           void main() {
-            float rim = 1.0 - max(0.0, dot(vNormal, vec3(0.0, 0.0, 1.0)));
-            rim = pow(rim, 3.5);
+            float rim     = 1.0 - max(0.0, dot(vNormal, vec3(0.0, 0.0, 1.0)));
+            rim           = pow(rim, 3.5);
             float glimmer = clamp(0.4 + vNormal.y * 0.4 - vNormal.x * 0.3, 0.0, 1.0);
-            vec3 color = mix(vec3(0.3, 0.35, 0.5), vec3(0.75, 0.85, 1.0), glimmer);
-            gl_FragColor = vec4(color, rim * 0.55);
+            vec3 color    = mix(vec3(0.3, 0.35, 0.5), vec3(0.75, 0.85, 1.0), glimmer);
+            gl_FragColor  = vec4(color, rim * 0.55);
           }
         `,
         transparent: true,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
+        blending:    THREE.AdditiveBlending,
+        depthWrite:  false,
       })
     ));
 
