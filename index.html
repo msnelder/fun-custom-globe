@@ -34,14 +34,9 @@
     const globe = new THREE.Group();
     scene.add(globe);
 
-    // ─── Base sphere (near-black) ─────────────────────────────────────────────
+    // ─── Rim / glimmer (Fresnel shader) ─────────────────────────────────────
+    // No base sphere — globe is transparent so back-side dots show through.
     const sphereGeo = new THREE.SphereGeometry(1, 64, 64);
-    globe.add(new THREE.Mesh(
-      sphereGeo,
-      new THREE.MeshStandardMaterial({ color: 0x06080f, roughness: 0.9, metalness: 0.0 })
-    ));
-
-    // ─── Rim / glimmer (Fresnel shader) ───────────────────────────────────────
     globe.add(new THREE.Mesh(
       sphereGeo,
       new THREE.ShaderMaterial({
@@ -68,64 +63,51 @@
       })
     ));
 
-    // ─── Lights ──────────────────────────────────────────────────────────────
-    scene.add(new THREE.AmbientLight(0xffffff, 0.06));
-    const dirLight = new THREE.DirectionalLight(0x8899cc, 0.35);
-    dirLight.position.set(-4, 3, 4);
-    scene.add(dirLight);
-
-    // ─── Random dots with per-point size & opacity ───────────────────────────
+    // ─── Random dots — uniform size, varying opacity, depth-faded ───────────
     const DOT_COUNT = 850;
     const positions = new Float32Array(DOT_COUNT * 3);
     const opacities = new Float32Array(DOT_COUNT);
-    const sizes     = new Float32Array(DOT_COUNT);
     const dpr       = renderer.getPixelRatio();
 
     for (let i = 0; i < DOT_COUNT; i++) {
-      // Uniform random point on sphere (not biased toward poles)
-      const u     = Math.random();
-      const v     = Math.random();
-      const theta = 2 * Math.PI * u;
-      const phi   = Math.acos(2 * v - 1);
-      const r     = 1.002; // just above sphere surface
-
+      const theta = 2 * Math.PI * Math.random();
+      const phi   = Math.acos(2 * Math.random() - 1);
+      const r     = 1.002;
       positions[i * 3]     = r * Math.sin(phi) * Math.cos(theta);
       positions[i * 3 + 1] = r * Math.cos(phi);
       positions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
-
-      // Opacity: spread across the full range — most in the mid zone
       opacities[i] = 0.08 + Math.random() * 0.92;
-
-      // Size: mostly small, occasional medium/large dot
-      const roll  = Math.random();
-      const px    = roll < 0.60 ? 1.5 + Math.random() * 2.0   // small  1.5–3.5 px
-                  : roll < 0.88 ? 3.5 + Math.random() * 2.5   // medium 3.5–6 px
-                  :               6.0 + Math.random() * 3.0;  // large  6–9 px
-      sizes[i] = px * dpr;
     }
 
     const dotsGeo = new THREE.BufferGeometry();
     dotsGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     dotsGeo.setAttribute('aOpacity', new THREE.BufferAttribute(opacities, 1));
-    dotsGeo.setAttribute('aSize',    new THREE.BufferAttribute(sizes, 1));
 
     const dotsMat = new THREE.ShaderMaterial({
+      uniforms: {
+        uSize: { value: 2.8 * dpr }, // uniform size for all dots
+      },
       vertexShader: `
+        uniform float uSize;
         attribute float aOpacity;
-        attribute float aSize;
         varying float vOpacity;
 
         void main() {
-          vOpacity = aOpacity;
-          gl_PointSize = aSize;
-          gl_Position  = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+
+          // Depth fade: front dots full brightness, back dots ~30% — sells the 3D
+          float depth     = clamp((-mvPos.z - 2.0) / 2.0, 0.0, 1.0);
+          float depthFade = 0.3 + 0.7 * (1.0 - depth);
+          vOpacity = aOpacity * depthFade;
+
+          gl_PointSize = uSize;
+          gl_Position  = projectionMatrix * mvPos;
         }
       `,
       fragmentShader: `
         varying float vOpacity;
 
         void main() {
-          // Circular dot with soft falloff
           vec2  uv = gl_PointCoord - vec2(0.5);
           float r  = length(uv);
           if (r > 0.5) discard;
