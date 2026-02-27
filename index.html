@@ -63,7 +63,7 @@
             float rim  = 1.0 - max(0.0, dot(vNormal, vec3(0.0, 0.0, 1.0)));
             float glow = pow(rim, 1.4); // lower power = more gradual fill
 
-            vec3 lit  = vec3(0.160, 0.190, 0.280);
+            vec3 lit  = vec3(0.133, 0.133, 0.133); // #222222
             gl_FragColor = vec4(lit, glow * 0.85);
           }
         `,
