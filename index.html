@@ -7,6 +7,7 @@
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { width: 100%; height: 100%; overflow: hidden; background: transparent; }
+    body.has-bg { background: var(--preview-bg); }
     canvas { display: block; width: 100% !important; height: 100% !important; }
   </style>
 </head>
@@ -17,6 +18,13 @@
 
   <script type="module">
     import * as THREE from 'three';
+
+    // ─── Preview background via ?bg= URL param ───────────────────────────────
+    const bg = new URLSearchParams(location.search).get('bg');
+    if (bg) {
+      document.body.style.setProperty('--preview-bg', `#${bg.replace(/^#/, '')}`);
+      document.body.classList.add('has-bg');
+    }
 
     // ─── Renderer ────────────────────────────────────────────────────────────
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
