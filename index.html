@@ -6,7 +6,7 @@
   <title>Globe</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { width: 100%; height: 100%; overflow: hidden; background: #080b14; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: transparent; }
     canvas { display: block; width: 100% !important; height: 100% !important; }
   </style>
 </head>
@@ -22,7 +22,7 @@
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setClearColor(0x080b14, 1);
+    renderer.setClearColor(0x000000, 0);
     document.body.appendChild(renderer.domElement);
 
     // ─── Scene & Camera ──────────────────────────────────────────────────────
@@ -132,7 +132,7 @@
     // ─── Animate ─────────────────────────────────────────────────────────────
     (function animate() {
       requestAnimationFrame(animate);
-      globe.rotation.y += 0.0018;
+      globe.rotation.y += 0.0006;
       renderer.render(scene, camera);
     })();
   </script>
