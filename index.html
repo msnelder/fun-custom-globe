@@ -93,7 +93,7 @@
 
     const dotsMat = new THREE.ShaderMaterial({
       uniforms: {
-        uSize: { value: 2.8 * dpr }, // uniform size for all dots
+        uSize: { value: 4.2 * dpr }, // uniform size for all dots
       },
       vertexShader: `
         uniform float uSize;
@@ -140,7 +140,7 @@
     // ─── Animate ─────────────────────────────────────────────────────────────
     (function animate() {
       requestAnimationFrame(animate);
-      globe.rotation.y += 0.0006;
+      globe.rotation.y += 0.0003;
       renderer.render(scene, camera);
     })();
   </script>
