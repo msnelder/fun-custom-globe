@@ -11,9 +11,6 @@
   </style>
 </head>
 <body>
-  <!-- topojson as plain UMD script — much more reliable than importmap -->
-  <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
-
   <script type="importmap">
     { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js" } }
   </script>
@@ -71,19 +68,77 @@
       })
     ));
 
-    // ─── Lighting ────────────────────────────────────────────────────────────
+    // ─── Lights ──────────────────────────────────────────────────────────────
     scene.add(new THREE.AmbientLight(0xffffff, 0.06));
     const dirLight = new THREE.DirectionalLight(0x8899cc, 0.35);
     dirLight.position.set(-4, 3, 4);
     scene.add(dirLight);
 
-    // ─── Animate (starts immediately, dots added once loaded) ────────────────
-    let animId;
-    (function animate() {
-      animId = requestAnimationFrame(animate);
-      globe.rotation.y += 0.0018;
-      renderer.render(scene, camera);
-    })();
+    // ─── Random dots with per-point size & opacity ───────────────────────────
+    const DOT_COUNT = 850;
+    const positions = new Float32Array(DOT_COUNT * 3);
+    const opacities = new Float32Array(DOT_COUNT);
+    const sizes     = new Float32Array(DOT_COUNT);
+    const dpr       = renderer.getPixelRatio();
+
+    for (let i = 0; i < DOT_COUNT; i++) {
+      // Uniform random point on sphere (not biased toward poles)
+      const u     = Math.random();
+      const v     = Math.random();
+      const theta = 2 * Math.PI * u;
+      const phi   = Math.acos(2 * v - 1);
+      const r     = 1.002; // just above sphere surface
+
+      positions[i * 3]     = r * Math.sin(phi) * Math.cos(theta);
+      positions[i * 3 + 1] = r * Math.cos(phi);
+      positions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+
+      // Opacity: spread across the full range — most in the mid zone
+      opacities[i] = 0.08 + Math.random() * 0.92;
+
+      // Size: mostly small, occasional medium/large dot
+      const roll  = Math.random();
+      const px    = roll < 0.60 ? 1.5 + Math.random() * 2.0   // small  1.5–3.5 px
+                  : roll < 0.88 ? 3.5 + Math.random() * 2.5   // medium 3.5–6 px
+                  :               6.0 + Math.random() * 3.0;  // large  6–9 px
+      sizes[i] = px * dpr;
+    }
+
+    const dotsGeo = new THREE.BufferGeometry();
+    dotsGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    dotsGeo.setAttribute('aOpacity', new THREE.BufferAttribute(opacities, 1));
+    dotsGeo.setAttribute('aSize',    new THREE.BufferAttribute(sizes, 1));
+
+    const dotsMat = new THREE.ShaderMaterial({
+      vertexShader: `
+        attribute float aOpacity;
+        attribute float aSize;
+        varying float vOpacity;
+
+        void main() {
+          vOpacity = aOpacity;
+          gl_PointSize = aSize;
+          gl_Position  = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        varying float vOpacity;
+
+        void main() {
+          // Circular dot with soft falloff
+          vec2  uv = gl_PointCoord - vec2(0.5);
+          float r  = length(uv);
+          if (r > 0.5) discard;
+          float alpha = 1.0 - smoothstep(0.25, 0.5, r);
+          gl_FragColor = vec4(1.0, 1.0, 1.0, alpha * vOpacity);
+        }
+      `,
+      transparent: true,
+      depthWrite:  false,
+      blending:    THREE.NormalBlending,
+    });
+
+    globe.add(new THREE.Points(dotsGeo, dotsMat));
 
     // ─── Resize ──────────────────────────────────────────────────────────────
     window.addEventListener('resize', () => {
@@ -92,99 +147,12 @@
       renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
-    // ─── Land dots (async — sphere is already spinning while this loads) ──────
-    async function buildDots() {
-      const MASK_W = 2048, MASK_H = 1024;
-      const maskCanvas = document.createElement('canvas');
-      maskCanvas.width = MASK_W;
-      maskCanvas.height = MASK_H;
-      const mctx = maskCanvas.getContext('2d');
-      mctx.fillStyle = '#000';
-      mctx.fillRect(0, 0, MASK_W, MASK_H);
-      mctx.fillStyle = '#fff';
-
-      // Fetch world topology
-      const world = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json')
-        .then(r => r.json());
-
-      // topojson loaded as global UMD script
-      const land = topojson.feature(world, world.objects.land);
-
-      function drawGeom(geom) {
-        if (geom.type === 'Polygon') drawRing(geom.coordinates[0]);
-        else if (geom.type === 'MultiPolygon') geom.coordinates.forEach(p => drawRing(p[0]));
-      }
-
-      function drawRing(ring) {
-        mctx.beginPath();
-        const [x0, y0] = project(ring[0]);
-        mctx.moveTo(x0, y0);
-        for (let i = 1; i < ring.length; i++) {
-          const [x, y] = project(ring[i]);
-          mctx.lineTo(x, y);
-        }
-        mctx.closePath();
-        mctx.fill();
-      }
-
-      function project([lng, lat]) {
-        return [((lng + 180) / 360) * MASK_W, ((90 - lat) / 180) * MASK_H];
-      }
-
-      drawGeom(land.geometry);
-
-      // Sample land pixels → 3D sphere positions
-      const pixels = mctx.getImageData(0, 0, MASK_W, MASK_H).data;
-      const positions = [];
-      const LAT_STEP = 1.8;
-
-      for (let lat = -90 + LAT_STEP / 2; lat < 90; lat += LAT_STEP) {
-        const cosLat = Math.cos((lat * Math.PI) / 180);
-        const lngStep = LAT_STEP / Math.max(cosLat, 0.05);
-
-        for (let lng = -180; lng < 180; lng += lngStep) {
-          const px = Math.min(MASK_W - 1, Math.floor(((lng + 180) / 360) * MASK_W));
-          const py = Math.min(MASK_H - 1, Math.floor(((90 - lat) / 180) * MASK_H));
-
-          if (pixels[(py * MASK_W + px) * 4] > 128) {
-            const phi   = ((90 - lat) * Math.PI) / 180;
-            const theta = ((lng + 180) * Math.PI) / 180;
-            const r     = 1.001;
-            positions.push(
-              r * Math.sin(phi) * Math.cos(theta),
-              r * Math.cos(phi),
-              r * Math.sin(phi) * Math.sin(theta)
-            );
-          }
-        }
-      }
-
-      // Circular dot sprite
-      const dotCanvas = document.createElement('canvas');
-      dotCanvas.width = dotCanvas.height = 64;
-      const dctx = dotCanvas.getContext('2d');
-      const grad = dctx.createRadialGradient(32, 32, 0, 32, 32, 30);
-      grad.addColorStop(0,    'rgba(255,255,255,1)');
-      grad.addColorStop(0.45, 'rgba(255,255,255,0.9)');
-      grad.addColorStop(1,    'rgba(255,255,255,0)');
-      dctx.fillStyle = grad;
-      dctx.fillRect(0, 0, 64, 64);
-
-      const dotsGeo = new THREE.BufferGeometry();
-      dotsGeo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-
-      globe.add(new THREE.Points(dotsGeo, new THREE.PointsMaterial({
-        color: 0x52606e,
-        size: 0.017,
-        sizeAttenuation: true,
-        map: new THREE.CanvasTexture(dotCanvas),
-        transparent: true,
-        alphaTest: 0.05,
-        depthWrite: false,
-      })));
-    }
-
-    buildDots().catch(err => console.warn('Dots failed to load:', err));
+    // ─── Animate ─────────────────────────────────────────────────────────────
+    (function animate() {
+      requestAnimationFrame(animate);
+      globe.rotation.y += 0.0018;
+      renderer.render(scene, camera);
+    })();
   </script>
 </body>
 </html>
