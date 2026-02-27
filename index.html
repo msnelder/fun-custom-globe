@@ -5,107 +5,194 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Globe</title>
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    html, body {
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      background: transparent;
-    }
-
-    canvas {
-      display: block;
-      width: 100% !important;
-      height: 100% !important;
-    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: transparent; }
+    canvas { display: block; width: 100% !important; height: 100% !important; }
   </style>
 </head>
 <body>
   <script type="importmap">
     {
       "imports": {
-        "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js"
+        "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+        "topojson-client": "https://esm.sh/topojson-client@3"
       }
     }
   </script>
 
   <script type="module">
     import * as THREE from 'three';
-
-    // ─── Scene ───────────────────────────────────────────────────────────────
-    const scene = new THREE.Scene();
-
-    // ─── Camera ──────────────────────────────────────────────────────────────
-    const camera = new THREE.PerspectiveCamera(
-      45,
-      window.innerWidth / window.innerHeight,
-      0.1,
-      1000
-    );
-    camera.position.z = 3;
+    import { feature } from 'topojson-client';
 
     // ─── Renderer ────────────────────────────────────────────────────────────
-    const renderer = new THREE.WebGLRenderer({
-      antialias: true,
-      alpha: true, // transparent background so it blends with Webflow
-    });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setClearColor(0x000000, 0); // fully transparent
+    renderer.setClearColor(0x000000, 0);
     document.body.appendChild(renderer.domElement);
 
-    // ─── Globe ───────────────────────────────────────────────────────────────
-    const geometry = new THREE.SphereGeometry(1, 64, 64);
+    // ─── Scene & Camera ──────────────────────────────────────────────────────
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.z = 3;
 
-    const material = new THREE.MeshStandardMaterial({
-      color: 0x2266cc,
-      roughness: 0.7,
-      metalness: 0.1,
-    });
-
-    const globe = new THREE.Mesh(geometry, material);
+    // ─── Globe group ─────────────────────────────────────────────────────────
+    const globe = new THREE.Group();
     scene.add(globe);
 
-    // Wireframe overlay
-    const wireframe = new THREE.Mesh(
-      geometry,
-      new THREE.MeshBasicMaterial({
-        color: 0x88aaff,
-        wireframe: true,
-        opacity: 0.15,
+    // ─── Base sphere (near-black) ─────────────────────────────────────────────
+    const sphereGeo = new THREE.SphereGeometry(1, 64, 64);
+    globe.add(new THREE.Mesh(
+      sphereGeo,
+      new THREE.MeshStandardMaterial({ color: 0x06080f, roughness: 0.9, metalness: 0.0 })
+    ));
+
+    // ─── Rim / glimmer overlay (Fresnel shader) ───────────────────────────────
+    // Bright at the edges, transparent in the center.
+    // Slight directional variation so one side glimmers more (like image 2).
+    globe.add(new THREE.Mesh(
+      sphereGeo,
+      new THREE.ShaderMaterial({
+        vertexShader: `
+          varying vec3 vNormal;
+          void main() {
+            vNormal = normalize(normalMatrix * normal);
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: `
+          varying vec3 vNormal;
+          void main() {
+            // Fresnel: 0 at center facing camera, 1 at silhouette edge
+            float rim = 1.0 - max(0.0, dot(vNormal, vec3(0.0, 0.0, 1.0)));
+            rim = pow(rim, 3.5);
+
+            // Directional glimmer: brighter on the upper-left arc
+            float glimmer = clamp(0.4 + vNormal.y * 0.4 - vNormal.x * 0.3, 0.0, 1.0);
+
+            vec3 color = mix(vec3(0.3, 0.35, 0.5), vec3(0.75, 0.85, 1.0), glimmer);
+            gl_FragColor = vec4(color, rim * 0.55);
+          }
+        `,
         transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
       })
-    );
-    globe.add(wireframe);
+    ));
 
-    // ─── Lights ──────────────────────────────────────────────────────────────
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
-    scene.add(ambientLight);
+    // ─── Lighting ────────────────────────────────────────────────────────────
+    scene.add(new THREE.AmbientLight(0xffffff, 0.06));
+    const dirLight = new THREE.DirectionalLight(0x8899cc, 0.35);
+    dirLight.position.set(-4, 3, 4);
+    scene.add(dirLight);
 
-    const sunLight = new THREE.DirectionalLight(0xffffff, 1.8);
-    sunLight.position.set(5, 3, 5);
-    scene.add(sunLight);
+    // ─── Land dot mask ───────────────────────────────────────────────────────
+    // Draw world land polygons onto a canvas → use as a pixel-level land mask
+    // so dots are placed only on land masses.
+    const MASK_W = 2048, MASK_H = 1024;
+    const maskCanvas = document.createElement('canvas');
+    maskCanvas.width = MASK_W;
+    maskCanvas.height = MASK_H;
+    const mctx = maskCanvas.getContext('2d');
+    mctx.fillStyle = '#000';
+    mctx.fillRect(0, 0, MASK_W, MASK_H);
+    mctx.fillStyle = '#fff';
 
-    // ─── Resize handler ──────────────────────────────────────────────────────
+    const world = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json')
+      .then(r => r.json());
+
+    const land = feature(world, world.objects.land); // single merged land feature
+
+    function drawGeom(geom) {
+      if (geom.type === 'Polygon') drawRing(geom.coordinates[0]);
+      else if (geom.type === 'MultiPolygon') geom.coordinates.forEach(p => drawRing(p[0]));
+    }
+
+    function drawRing(ring) {
+      mctx.beginPath();
+      const [x0, y0] = project(ring[0]);
+      mctx.moveTo(x0, y0);
+      for (let i = 1; i < ring.length; i++) {
+        const [x, y] = project(ring[i]);
+        mctx.lineTo(x, y);
+      }
+      mctx.closePath();
+      mctx.fill();
+    }
+
+    // Equirectangular projection: lng [-180,180] → x, lat [90,-90] → y
+    function project([lng, lat]) {
+      return [((lng + 180) / 360) * MASK_W, ((90 - lat) / 180) * MASK_H];
+    }
+
+    drawGeom(land.geometry);
+
+    // ─── Build dot positions (land only) ─────────────────────────────────────
+    const pixels = mctx.getImageData(0, 0, MASK_W, MASK_H).data;
+    const positions = [];
+    const LAT_STEP = 1.8; // degrees between dot rows — controls density
+
+    for (let lat = -90 + LAT_STEP / 2; lat < 90; lat += LAT_STEP) {
+      // Scale lng step by cos(lat) so dots have uniform physical spacing on sphere
+      const cosLat = Math.cos((lat * Math.PI) / 180);
+      const lngStep = LAT_STEP / Math.max(cosLat, 0.05);
+
+      for (let lng = -180; lng < 180; lng += lngStep) {
+        const px = Math.min(MASK_W - 1, Math.floor(((lng + 180) / 360) * MASK_W));
+        const py = Math.min(MASK_H - 1, Math.floor(((90 - lat) / 180) * MASK_H));
+
+        if (pixels[(py * MASK_W + px) * 4] > 128) { // white pixel = land
+          const phi   = ((90 - lat) * Math.PI) / 180;
+          const theta = ((lng + 180) * Math.PI) / 180;
+          const r     = 1.001; // just above sphere surface
+          positions.push(
+            r * Math.sin(phi) * Math.cos(theta),
+            r * Math.cos(phi),
+            r * Math.sin(phi) * Math.sin(theta)
+          );
+        }
+      }
+    }
+
+    // ─── Circular dot sprite texture ──────────────────────────────────────────
+    const dotCanvas = document.createElement('canvas');
+    dotCanvas.width = dotCanvas.height = 64;
+    const dctx = dotCanvas.getContext('2d');
+    const grad = dctx.createRadialGradient(32, 32, 0, 32, 32, 30);
+    grad.addColorStop(0,   'rgba(255,255,255,1)');
+    grad.addColorStop(0.45,'rgba(255,255,255,0.9)');
+    grad.addColorStop(1,   'rgba(255,255,255,0)');
+    dctx.fillStyle = grad;
+    dctx.fillRect(0, 0, 64, 64);
+    const dotTex = new THREE.CanvasTexture(dotCanvas);
+
+    // ─── Points mesh ─────────────────────────────────────────────────────────
+    const dotsGeo = new THREE.BufferGeometry();
+    dotsGeo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+
+    globe.add(new THREE.Points(dotsGeo, new THREE.PointsMaterial({
+      color: 0x52606e,       // dark cool gray — tweak this to taste
+      size: 0.017,
+      sizeAttenuation: true,
+      map: dotTex,
+      transparent: true,
+      alphaTest: 0.05,
+      depthWrite: false,
+    })));
+
+    // ─── Resize ──────────────────────────────────────────────────────────────
     window.addEventListener('resize', () => {
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
-    // ─── Animation loop ──────────────────────────────────────────────────────
-    function animate() {
+    // ─── Animate ─────────────────────────────────────────────────────────────
+    (function animate() {
       requestAnimationFrame(animate);
-      globe.rotation.y += 0.003;
+      globe.rotation.y += 0.0018;
       renderer.render(scene, camera);
-    }
-
-    animate();
+    })();
   </script>
 </body>
 </html>
