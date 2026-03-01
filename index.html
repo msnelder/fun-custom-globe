@@ -116,40 +116,59 @@
       opacities[i] = 1.0;
     }
 
+    // ─── Flash state ─────────────────────────────────────────────────────────
+    const FLASH_HOLD  = 2.0;               // seconds at full brightness
+    const FLASH_FADE  = 4.0;               // seconds to fade back down
+    const FLASH_TOTAL = FLASH_HOLD + FLASH_FADE;
+    const FLASH_RATE  = 1.8;               // new flashes triggered per second
+
+    const flashTimers = new Float32Array(DOT_COUNT).fill(-999); // when each flash started
+    const flashVals   = new Float32Array(DOT_COUNT);            // current flash intensity 0–1
+
     const dotsGeo = new THREE.BufferGeometry();
     dotsGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     dotsGeo.setAttribute('aOpacity', new THREE.BufferAttribute(opacities, 1));
 
+    const flashAttr = new THREE.BufferAttribute(flashVals, 1);
+    flashAttr.setUsage(THREE.DynamicDrawUsage); // tell GPU this updates every frame
+    dotsGeo.setAttribute('aFlash', flashAttr);
+
     const dotsMat = new THREE.ShaderMaterial({
       uniforms: {
-        uSize: { value: 4.2 * dpr }, // uniform size for all dots
+        uSize: { value: 4.2 * dpr },
       },
       vertexShader: `
         uniform float uSize;
         attribute float aOpacity;
+        attribute float aFlash;
         varying float vOpacity;
+        varying float vFlash;
 
         void main() {
-          vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
-
-          // Depth fade: front dots full brightness, back dots ~30% — sells the 3D
+          vec4 mvPos      = modelViewMatrix * vec4(position, 1.0);
           float depth     = clamp((-mvPos.z - 2.0) / 2.0, 0.0, 1.0);
           float depthFade = 0.3 + 0.7 * (1.0 - depth);
           vOpacity = aOpacity * depthFade;
-
+          vFlash   = aFlash;
           gl_PointSize = uSize;
           gl_Position  = projectionMatrix * mvPos;
         }
       `,
       fragmentShader: `
         varying float vOpacity;
+        varying float vFlash;
 
         void main() {
           vec2  uv = gl_PointCoord - vec2(0.5);
           float r  = length(uv);
           if (r > 0.5) discard;
           float alpha = 1.0 - smoothstep(0.25, 0.5, r);
-          gl_FragColor = vec4(0.45, 0.45, 0.45, alpha * vOpacity);
+
+          vec3 base    = vec3(0.45, 0.45, 0.45);       // resting gray
+          vec3 flashed = vec3(0.95, 0.97, 1.00);        // near-white flash
+          vec3 color   = mix(base, flashed, vFlash);
+
+          gl_FragColor = vec4(color, alpha * vOpacity);
         }
       `,
       transparent: true,
@@ -167,8 +186,49 @@
     });
 
     // ─── Animate ─────────────────────────────────────────────────────────────
+    const clock = new THREE.Clock();
+    let lastT   = 0;
+
     (function animate() {
       requestAnimationFrame(animate);
+
+      const elapsed = clock.getElapsedTime();
+      const dt      = elapsed - lastT;
+      lastT         = elapsed;
+
+      // Probability of any single idle dot flashing this frame
+      const triggerProb = FLASH_RATE * dt / DOT_COUNT;
+
+      let dirty = false;
+
+      for (let i = 0; i < DOT_COUNT; i++) {
+        const age = elapsed - flashTimers[i];
+
+        // Randomly trigger idle dots
+        if (age >= FLASH_TOTAL && Math.random() < triggerProb) {
+          flashTimers[i] = elapsed;
+          dirty = true;
+        }
+
+        // Compute flash intensity for this dot
+        const a = elapsed - flashTimers[i];
+        let v   = 0.0;
+        if (a < FLASH_HOLD) {
+          v = 1.0; // peak — hold at full brightness
+        } else if (a < FLASH_TOTAL) {
+          const p = (a - FLASH_HOLD) / FLASH_FADE;  // 0 → 1 over fade period
+          const s = p * p * (3.0 - 2.0 * p);        // smoothstep easing
+          v = 1.0 - s;
+        }
+
+        if (flashVals[i] !== v) {
+          flashVals[i] = v;
+          dirty = true;
+        }
+      }
+
+      if (dirty) flashAttr.needsUpdate = true;
+
       globe.rotation.y += 0.0003;
       renderer.render(scene, camera);
     })();
