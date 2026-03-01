@@ -113,7 +113,7 @@
       positions[i * 3]     = r * Math.sin(phi) * Math.cos(theta);
       positions[i * 3 + 1] = r * Math.cos(phi);
       positions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
-      opacities[i] = 0.08 + Math.random() * 0.92;
+      opacities[i] = 1.0;
     }
 
     const dotsGeo = new THREE.BufferGeometry();
@@ -149,7 +149,7 @@
           float r  = length(uv);
           if (r > 0.5) discard;
           float alpha = 1.0 - smoothstep(0.25, 0.5, r);
-          gl_FragColor = vec4(1.0, 1.0, 1.0, alpha * vOpacity);
+          gl_FragColor = vec4(0.45, 0.45, 0.45, alpha * vOpacity);
         }
       `,
       transparent: true,
