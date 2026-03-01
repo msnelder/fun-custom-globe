@@ -168,7 +168,9 @@
           vec3 flashed = vec3(0.95, 0.97, 1.00);        // near-white flash
           vec3 color   = mix(base, flashed, vFlash);
 
-          gl_FragColor = vec4(color, alpha * vOpacity);
+          // Resting dots 30% dimmer; flashing dots unaffected
+          float opacityMult = mix(0.7, 1.0, vFlash);
+          gl_FragColor = vec4(color, alpha * vOpacity * opacityMult);
         }
       `,
       transparent: true,
