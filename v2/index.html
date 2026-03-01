@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Globe</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: transparent; }
+    body.has-bg { background: var(--preview-bg); }
+    canvas { display: block; width: 100% !important; height: 100% !important; }
+  </style>
+</head>
+<body>
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js" } }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+
+    // ─── Preview background via ?bg= URL param ───────────────────────────────
+    const bg = new URLSearchParams(location.search).get('bg');
+    if (bg) {
+      document.body.style.setProperty('--preview-bg', `#${bg.replace(/^#/, '')}`);
+      document.body.classList.add('has-bg');
+    }
+
+    // ─── Renderer ────────────────────────────────────────────────────────────
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setClearColor(0x000000, 0);
+    document.body.appendChild(renderer.domElement);
+
+    // ─── Scene & Camera ──────────────────────────────────────────────────────
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.z = 3;
+
+    // ─── Globe group ─────────────────────────────────────────────────────────
+    const globe = new THREE.Group();
+    scene.add(globe);
+
+    const sphereGeo = new THREE.SphereGeometry(1, 64, 64);
+
+    // ─── Radial inner glow (transparent) ─────────────────────────────────────
+    // Fully transparent at center, glow builds radially toward the edges.
+    globe.add(new THREE.Mesh(
+      sphereGeo,
+      new THREE.ShaderMaterial({
+        vertexShader: `
+          varying vec3 vNormal;
+          void main() {
+            vNormal = normalize(normalMatrix * normal);
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: `
+          varying vec3 vNormal;
+          void main() {
+            // 0 at center (normal faces camera), 1 at silhouette edge
+            float rim  = 1.0 - max(0.0, dot(vNormal, vec3(0.0, 0.0, 1.0)));
+            float glow = pow(rim, 1.4); // lower power = more gradual fill
+
+            vec3 lit  = vec3(0.133, 0.133, 0.133); // #222222
+            gl_FragColor = vec4(lit, glow * 0.85);
+          }
+        `,
+        transparent: true,
+        blending:    THREE.AdditiveBlending,
+        depthWrite:  false,
+      })
+    ));
+
+    // ─── Rim / glimmer (Fresnel shader) ──────────────────────────────────────
+    globe.add(new THREE.Mesh(
+      sphereGeo,
+      new THREE.ShaderMaterial({
+        vertexShader: `
+          varying vec3 vNormal;
+          void main() {
+            vNormal = normalize(normalMatrix * normal);
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: `
+          varying vec3 vNormal;
+          void main() {
+            float rim     = 1.0 - max(0.0, dot(vNormal, vec3(0.0, 0.0, 1.0)));
+            rim           = pow(rim, 3.5);
+            float glimmer = clamp(0.4 + vNormal.y * 0.4 - vNormal.x * 0.3, 0.0, 1.0);
+            vec3 color    = mix(vec3(0.3, 0.35, 0.5), vec3(0.75, 0.85, 1.0), glimmer);
+            gl_FragColor  = vec4(color, rim * 0.55);
+          }
+        `,
+        transparent: true,
+        blending:    THREE.AdditiveBlending,
+        depthWrite:  false,
+      })
+    ));
+
+    // ─── Random dots — uniform size, varying opacity, depth-faded ───────────
+    const DOT_COUNT = 850;
+    const positions = new Float32Array(DOT_COUNT * 3);
+    const opacities = new Float32Array(DOT_COUNT);
+    const dpr       = renderer.getPixelRatio();
+
+    for (let i = 0; i < DOT_COUNT; i++) {
+      const theta = 2 * Math.PI * Math.random();
+      const phi   = Math.acos(2 * Math.random() - 1);
+      const r     = 1.002;
+      positions[i * 3]     = r * Math.sin(phi) * Math.cos(theta);
+      positions[i * 3 + 1] = r * Math.cos(phi);
+      positions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+      opacities[i] = 1.0;
+    }
+
+    // ─── Flash state ─────────────────────────────────────────────────────────
+    const FLASH_HOLD  = 2.0;               // seconds at full brightness
+    const FLASH_FADE  = 4.0;               // seconds to fade back down
+    const FLASH_TOTAL = FLASH_HOLD + FLASH_FADE;
+    const FLASH_RATE  = 2.0;               // new flashes triggered per second
+
+    const flashTimers = new Float32Array(DOT_COUNT).fill(-999); // when each flash started
+    const flashVals   = new Float32Array(DOT_COUNT);            // current flash intensity 0–1
+
+    const dotsGeo = new THREE.BufferGeometry();
+    dotsGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    dotsGeo.setAttribute('aOpacity', new THREE.BufferAttribute(opacities, 1));
+
+    const flashAttr = new THREE.BufferAttribute(flashVals, 1);
+    flashAttr.setUsage(THREE.DynamicDrawUsage); // tell GPU this updates every frame
+    dotsGeo.setAttribute('aFlash', flashAttr);
+
+    const dotsMat = new THREE.ShaderMaterial({
+      uniforms: {
+        uSize: { value: 6.2 * dpr },
+      },
+      vertexShader: `
+        uniform float uSize;
+        attribute float aOpacity;
+        attribute float aFlash;
+        varying float vOpacity;
+        varying float vFlash;
+
+        void main() {
+          vec4 mvPos      = modelViewMatrix * vec4(position, 1.0);
+          float depth     = clamp((-mvPos.z - 2.0) / 2.0, 0.0, 1.0);
+          float depthFade = 0.3 + 0.7 * (1.0 - depth);
+          vOpacity = aOpacity * depthFade;
+          vFlash   = aFlash;
+          gl_PointSize = uSize;
+          gl_Position  = projectionMatrix * mvPos;
+        }
+      `,
+      fragmentShader: `
+        varying float vOpacity;
+        varying float vFlash;
+
+        void main() {
+          vec2  uv = gl_PointCoord - vec2(0.5);
+          float r  = length(uv);
+          if (r > 0.5) discard;
+          float alpha = 1.0 - smoothstep(0.25, 0.5, r);
+
+          vec3 base    = vec3(0.45, 0.45, 0.45);       // resting gray
+          vec3 flashed = vec3(0.95, 0.97, 1.00);        // near-white flash
+          vec3 color   = mix(base, flashed, vFlash);
+
+          // Resting dots 30% dimmer; flashing dots unaffected
+          float opacityMult = mix(0.4, 1.0, vFlash);
+          gl_FragColor = vec4(color, alpha * vOpacity * opacityMult);
+        }
+      `,
+      transparent: true,
+      depthWrite:  false,
+      blending:    THREE.NormalBlending,
+    });
+
+    globe.add(new THREE.Points(dotsGeo, dotsMat));
+
+    // ─── Resize ──────────────────────────────────────────────────────────────
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // ─── Animate ─────────────────────────────────────────────────────────────
+    const clock = new THREE.Clock();
+    let lastT   = 0;
+
+    (function animate() {
+      requestAnimationFrame(animate);
+
+      const elapsed = clock.getElapsedTime();
+      const dt      = elapsed - lastT;
+      lastT         = elapsed;
+
+      // Probability of any single idle dot flashing this frame
+      const triggerProb = FLASH_RATE * dt / DOT_COUNT;
+
+      let dirty = false;
+
+      for (let i = 0; i < DOT_COUNT; i++) {
+        const age = elapsed - flashTimers[i];
+
+        // Randomly trigger idle dots
+        if (age >= FLASH_TOTAL && Math.random() < triggerProb) {
+          flashTimers[i] = elapsed;
+          dirty = true;
+        }
+
+        // Compute flash intensity for this dot
+        const a = elapsed - flashTimers[i];
+        let v   = 0.0;
+        if (a < FLASH_HOLD) {
+          v = 1.0; // peak — hold at full brightness
+        } else if (a < FLASH_TOTAL) {
+          const p = (a - FLASH_HOLD) / FLASH_FADE;  // 0 → 1 over fade period
+          const s = p * p * (3.0 - 2.0 * p);        // smoothstep easing
+          v = 1.0 - s;
+        }
+
+        if (flashVals[i] !== v) {
+          flashVals[i] = v;
+          dirty = true;
+        }
+      }
+
+      if (dirty) flashAttr.needsUpdate = true;
+
+      globe.rotation.y += 0.0003;
+      renderer.render(scene, camera);
+    })();
+  </script>
+</body>
+</html>
