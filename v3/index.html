@@ -107,7 +107,7 @@
     const land = feature(topo, topo.objects.land);
 
     // ─── Land-only dots with coastal bias ────────────────────────────────────
-    const DOT_COUNT = 850;
+    const DOT_COUNT = 2000;
     const positions = new Float32Array(DOT_COUNT * 3);
     const opacities = new Float32Array(DOT_COUNT);
     const dpr       = renderer.getPixelRatio();
@@ -132,7 +132,7 @@
       if (!geoContains(land, [lon, lat])) continue;
       // Coastal bias: coast dots always kept, inland dots thinned to 5%
       const score = coastScore(lon, lat);
-      if (Math.random() > 0.05 + 0.95 * score) continue;
+      if (Math.random() > 0.02 + 0.98 * score) continue;
       const r = 1.002;
       positions[placed * 3]     = r * Math.sin(phi) * Math.cos(theta);
       positions[placed * 3 + 1] = r * Math.cos(phi);
@@ -172,7 +172,7 @@
         void main() {
           vec4 mvPos      = modelViewMatrix * vec4(position, 1.0);
           float depth     = clamp((-mvPos.z - 2.0) / 2.0, 0.0, 1.0);
-          float depthFade = 0.3 + 0.7 * (1.0 - depth);
+          float depthFade = 0.05 + 0.95 * (1.0 - depth);
           vOpacity = aOpacity * depthFade;
           vFlash   = aFlash;
           gl_PointSize = uSize;
