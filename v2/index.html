@@ -116,7 +116,7 @@
     while (placed < DOT_COUNT) {
       const theta = 2 * Math.PI * Math.random();
       const phi   = Math.acos(2 * Math.random() - 1);
-      const lon   = theta * (180 / Math.PI) - 180;
+      const lon   = 180 - theta * (180 / Math.PI);
       const lat   = 90 - phi * (180 / Math.PI);
       if (!geoContains(land, [lon, lat])) continue;
       const r = 1.002;
