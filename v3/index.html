@@ -106,11 +106,22 @@
     const topo = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/land-110m.json').then(r => r.json());
     const land = feature(topo, topo.objects.land);
 
-    // ─── Land-only dots — rejection sampling ─────────────────────────────────
+    // ─── Land-only dots with coastal bias ────────────────────────────────────
     const DOT_COUNT = 850;
     const positions = new Float32Array(DOT_COUNT * 3);
     const opacities = new Float32Array(DOT_COUNT);
     const dpr       = renderer.getPixelRatio();
+
+    // Returns fraction of 8 surrounding points that are ocean (0 = deep inland, 1 = pure coast)
+    function coastScore(lon, lat) {
+      const dist = 6.0; // degrees — controls width of coastal band
+      const dirs = [[dist,0],[-dist,0],[0,dist],[0,-dist],[dist,dist],[-dist,dist],[dist,-dist],[-dist,-dist]];
+      let sea = 0;
+      for (const [dl, dp] of dirs) {
+        if (!geoContains(land, [lon + dl, lat + dp])) sea++;
+      }
+      return sea / dirs.length;
+    }
 
     let placed = 0;
     while (placed < DOT_COUNT) {
@@ -119,6 +130,9 @@
       const lon   = theta * (180 / Math.PI) - 180;
       const lat   = 90 - phi * (180 / Math.PI);
       if (!geoContains(land, [lon, lat])) continue;
+      // Coastal bias: coast dots always kept, inland dots thinned to 5%
+      const score = coastScore(lon, lat);
+      if (Math.random() > 0.05 + 0.95 * score) continue;
       const r = 1.002;
       positions[placed * 3]     = r * Math.sin(phi) * Math.cos(theta);
       positions[placed * 3 + 1] = r * Math.cos(phi);
