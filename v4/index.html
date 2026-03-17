@@ -184,7 +184,10 @@ const DOT_POSITIONS = new Float32Array([
 
     // ─── Animate ─────────────────────────────────────────────────────────────
     const clock = new THREE.Clock();
-    let lastT   = 0;
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) clock.stop(); else clock.start();
+    });
+    let lastT = 0;
 
     (function animate() {
       requestAnimationFrame(animate);
