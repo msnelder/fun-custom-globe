@@ -105,34 +105,6 @@ const DOT_POSITIONS = new Float32Array([
       })
     ));
 
-    // ─── Outer halo glow ─────────────────────────────────────────────────────
-    globe.add(new THREE.Mesh(
-      new THREE.SphereGeometry(1.22, 64, 64),
-      new THREE.ShaderMaterial({
-        vertexShader: `
-          varying vec3 vNormal;
-          void main() {
-            vNormal = normalize(normalMatrix * normal);
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-          }
-        `,
-        fragmentShader: `
-          varying vec3 vNormal;
-          void main() {
-            float rim     = 1.0 - max(0.0, dot(vNormal, vec3(0.0, 0.0, 1.0)));
-            float halo    = pow(rim, 2.0);
-            float glimmer = clamp(0.4 + vNormal.y * 0.4 - vNormal.x * 0.3, 0.0, 1.0);
-            vec3 color    = mix(vec3(0.3, 0.35, 0.5), vec3(0.75, 0.85, 1.0), glimmer);
-            gl_FragColor  = vec4(color, halo * 0.18);
-          }
-        `,
-        transparent: true,
-        blending:    THREE.AdditiveBlending,
-        depthWrite:  false,
-        side:        THREE.BackSide,
-      })
-    ));
-
     // ─── Pre-computed land-only dots with coastal bias ───────────────────────
     const DOT_COUNT = DOT_POSITIONS.length / 3;
     const positions = DOT_POSITIONS;
