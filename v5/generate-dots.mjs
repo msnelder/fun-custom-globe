@@ -26,7 +26,7 @@ console.log('Fetching world-atlas data…');
 const topo = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/land-110m.json').then(r => r.json());
 const land = feature(topo, topo.objects.land);
 
-const DOT_COUNT = 2000;
+const DOT_COUNT = 6000;
 const positions = [];
 
 function coastScore(lon, lat) {
