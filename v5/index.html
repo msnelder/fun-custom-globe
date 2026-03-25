@@ -6,7 +6,7 @@
   <title>Globe</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { width: 100%; height: 100%; overflow: hidden; background: transparent; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
     body.has-bg { background: var(--preview-bg); }
     canvas { display: block; width: 100% !important; height: 100% !important; }
   </style>
@@ -112,10 +112,9 @@ const DOT_POSITIONS = new Float32Array([
     const dpr       = renderer.getPixelRatio();
 
     // ─── Flash state ─────────────────────────────────────────────────────────
-    const FLASH_HOLD  = 2.0;               // seconds at full brightness
-    const FLASH_FADE  = 2.0;               // seconds to fade back down
+    const FLASH_HOLD  = 1.0;
+    const FLASH_FADE  = 2.0;
     const FLASH_TOTAL = FLASH_HOLD + FLASH_FADE;
-    const FLASH_RATE  = 4.0;               // new flashes triggered per second
 
     const flashTimers = new Float32Array(DOT_COUNT).fill(-999); // when each flash started
     const flashVals   = new Float32Array(DOT_COUNT);            // current flash intensity 0–1
@@ -130,7 +129,7 @@ const DOT_POSITIONS = new Float32Array([
 
     const dotsMat = new THREE.ShaderMaterial({
       uniforms: {
-        uSize: { value: 7.0 * dpr },
+        uSize: { value: 5.4 * dpr },
       },
       vertexShader: `
         uniform float uSize;
@@ -182,14 +181,52 @@ const DOT_POSITIONS = new Float32Array([
       renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
+    // ─── Drag to rotate ──────────────────────────────────────────────────────
+    const AUTO_SPEED = 0.0003;
+    const DRAG_SCALE = 0.005;
+    const FRICTION   = 0.92;
+
+    let isDragging = false;
+    let prevX = 0, prevY = 0;
+    let velX = 0, velY = 0;
+
+    function onPointerDown(e) {
+      isDragging = true;
+      prevX = e.clientX; prevY = e.clientY;
+      velX = 0; velY = 0;
+      renderer.domElement.style.cursor = 'grabbing';
+    }
+    function onPointerMove(e) {
+      if (!isDragging) return;
+      const dx = e.clientX - prevX;
+      const dy = e.clientY - prevY;
+      velX = dx * DRAG_SCALE;
+      velY = dy * DRAG_SCALE;
+      globe.rotation.y += velX;
+      globe.rotation.x += velY;
+      globe.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, globe.rotation.x));
+      prevX = e.clientX; prevY = e.clientY;
+    }
+    function onPointerUp() {
+      isDragging = false;
+      renderer.domElement.style.cursor = 'grab';
+    }
+    renderer.domElement.style.cursor = 'grab';
+    renderer.domElement.addEventListener('pointerdown', onPointerDown);
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+
     // ─── Animate ─────────────────────────────────────────────────────────────
     const clock = new THREE.Clock();
     document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) {
-        flashTimers.fill(-999);
-        lastT = clock.getElapsedTime();
-      }
+      if (document.hidden) clock.stop(); else clock.start();
     });
+
+    let nextFlashAt = 0.5;
+    function scheduleNextFlash() {
+      nextFlashAt += 0.8 + Math.random() * 0.4;
+    }
+
     let lastT = 0;
 
     (function animate() {
@@ -199,40 +236,59 @@ const DOT_POSITIONS = new Float32Array([
       const dt      = elapsed - lastT;
       lastT         = elapsed;
 
-      // Probability of any single idle dot flashing this frame
-      const triggerProb = FLASH_RATE * dt / DOT_COUNT;
+      // ── Rotation ────────────────────────────────────────────────────────────
+      if (!isDragging) {
+        velX *= FRICTION;
+        velY *= FRICTION;
+        if (Math.abs(velX) > 0.00001 || Math.abs(velY) > 0.00001) {
+          globe.rotation.y += velX;
+          globe.rotation.x += velY;
+          globe.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, globe.rotation.x));
+        } else {
+          globe.rotation.y += AUTO_SPEED;
+        }
+      }
 
+      // ── Smarter flashing: one dot at a time, front hemisphere only ──────────
       let dirty = false;
 
-      for (let i = 0; i < DOT_COUNT; i++) {
-        const age = elapsed - flashTimers[i];
-
-        // Randomly trigger idle dots
-        if (age >= FLASH_TOTAL && Math.random() < triggerProb) {
-          flashTimers[i] = elapsed;
-          dirty = true;
+      if (elapsed >= nextFlashAt) {
+        scheduleNextFlash();
+        const camDir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+        const nMat   = new THREE.Matrix3().getNormalMatrix(globe.matrixWorld);
+        const candidates = [];
+        for (let j = 0; j < DOT_COUNT; j++) {
+          if (elapsed - flashTimers[j] < FLASH_TOTAL) continue;
+          const wx = positions[j * 3], wy = positions[j * 3 + 1], wz = positions[j * 3 + 2];
+          const nx = nMat.elements[0]*wx + nMat.elements[3]*wy + nMat.elements[6]*wz;
+          const ny = nMat.elements[1]*wx + nMat.elements[4]*wy + nMat.elements[7]*wz;
+          const nz = nMat.elements[2]*wx + nMat.elements[5]*wy + nMat.elements[8]*wz;
+          const facing = -(nx * camDir.x + ny * camDir.y + nz * camDir.z);
+          if (facing > 0.5) candidates.push(j);
         }
-
-        // Compute flash intensity for this dot
-        const a = elapsed - flashTimers[i];
-        let v   = 0.0;
-        if (a < FLASH_HOLD) {
-          v = 1.0; // peak — hold at full brightness
-        } else if (a < FLASH_TOTAL) {
-          const p = (a - FLASH_HOLD) / FLASH_FADE;  // 0 → 1 over fade period
-          const s = p * p * (3.0 - 2.0 * p);        // smoothstep easing
-          v = 1.0 - s;
-        }
-
-        if (flashVals[i] !== v) {
-          flashVals[i] = v;
+        if (candidates.length > 0) {
+          const pick = candidates[Math.floor(Math.random() * candidates.length)];
+          flashTimers[pick] = elapsed;
           dirty = true;
         }
       }
 
+      // ── Update flash values ─────────────────────────────────────────────────
+      for (let i = 0; i < DOT_COUNT; i++) {
+        const a = elapsed - flashTimers[i];
+        let v = 0.0;
+        if (a < FLASH_HOLD) {
+          v = 1.0;
+        } else if (a < FLASH_TOTAL) {
+          const p = (a - FLASH_HOLD) / FLASH_FADE;
+          const s = p * p * (3.0 - 2.0 * p);
+          v = 1.0 - s;
+        }
+        if (flashVals[i] !== v) { flashVals[i] = v; dirty = true; }
+      }
+
       if (dirty) flashAttr.needsUpdate = true;
 
-      globe.rotation.y += 0.0003;
       renderer.render(scene, camera);
     })();
   </script>
