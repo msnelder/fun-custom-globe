@@ -256,16 +256,43 @@ const DOT_POSITIONS = new Float32Array([
     const LINE_SHRINK   = 2.0;   // seconds to shrink back down
     const LINE_TOTAL    = LINE_GROW + LINE_HOLD + LINE_SHRINK;
 
-    const spikeGeo = new THREE.CylinderGeometry(0.003, 0.003, 1, 6);
-    const _yAxis   = new THREE.Vector3(0, 1, 0);
+    const spikeGeo    = new THREE.CylinderGeometry(0.003, 0.003, 1, 6);
+    const spikeGlowGeo = new THREE.CylinderGeometry(0.012, 0.012, 1, 16);
+    const _yAxis       = new THREE.Vector3(0, 1, 0);
 
     const linePool = [];
     for (let i = 0; i < LINE_POOL; i++) {
-      const mat  = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false });
-      const mesh = new THREE.Mesh(spikeGeo, mat);
-      mesh.visible = false;
+      const mat      = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false });
+      const mesh     = new THREE.Mesh(spikeGeo, mat);
+      const glowMat  = new THREE.ShaderMaterial({
+        uniforms: { uOpacity: { value: 0.4 } },
+        vertexShader: `
+          varying vec3 vNormal;
+          void main() {
+            vNormal     = normalize(normalMatrix * normal);
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: `
+          uniform float uOpacity;
+          varying vec3  vNormal;
+          void main() {
+            float facing = abs(dot(vNormal, vec3(0.0, 0.0, 1.0)));
+            float glow   = pow(facing, 2.0);
+            gl_FragColor = vec4(1.0, 1.0, 1.0, glow * uOpacity);
+          }
+        `,
+        transparent: true,
+        depthWrite:  false,
+        blending:    THREE.AdditiveBlending,
+        side:        THREE.FrontSide,
+      });
+      const glowMesh = new THREE.Mesh(spikeGlowGeo, glowMat);
+      mesh.visible     = false;
+      glowMesh.visible = false;
       globe.add(mesh);
-      linePool.push({ line: mesh, mat, time: -999, nx: 0, ny: 0, nz: 0, maxH: 0.12 });
+      globe.add(glowMesh);
+      linePool.push({ line: mesh, mat, glow: glowMesh, glowMat, time: -999, nx: 0, ny: 0, nz: 0, maxH: 0.12 });
     }
     let nextLine = 0;
 
@@ -433,6 +460,11 @@ const DOT_POSITIONS = new Float32Array([
         l.line.quaternion.setFromUnitVectors(_yAxis, normal);
         l.line.visible = true;
 
+        l.glowMat.uniforms.uOpacity.value = opacity * 0.4;
+        l.glow.position.copy(l.line.position);
+        l.glow.scale.set(1, length, 1);
+        l.glow.quaternion.copy(l.line.quaternion);
+        l.glow.visible = true;
       }
 
       renderer.render(scene, camera);
