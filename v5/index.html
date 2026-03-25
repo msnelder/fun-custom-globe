@@ -213,19 +213,16 @@ const DOT_POSITIONS = new Float32Array([
     const LINE_SHRINK   = 2.0;   // seconds to shrink back down
     const LINE_TOTAL    = LINE_GROW + LINE_HOLD + LINE_SHRINK;
 
-    const lineMat = new THREE.LineBasicMaterial({
-      color: 0xffffff, transparent: true, depthWrite: false
-    });
+    const spikeGeo = new THREE.CylinderGeometry(0.002, 0.002, 1, 6);
+    const _yAxis   = new THREE.Vector3(0, 1, 0);
 
     const linePool = [];
     for (let i = 0; i < LINE_POOL; i++) {
-      const pts = new Float32Array(6);
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.BufferAttribute(pts, 3));
-      const line = new THREE.Line(geo, lineMat.clone());
-      line.visible = false;
-      globe.add(line);
-      linePool.push({ line, geo, pts, time: -999, nx: 0, ny: 0, nz: 0 });
+      const mat  = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false });
+      const mesh = new THREE.Mesh(spikeGeo, mat);
+      mesh.visible = false;
+      globe.add(mesh);
+      linePool.push({ line: mesh, mat, time: -999, nx: 0, ny: 0, nz: 0, maxH: 0.12 });
     }
     let nextLine = 0;
 
@@ -235,7 +232,7 @@ const DOT_POSITIONS = new Float32Array([
       const len = Math.sqrt(px*px + py*py + pz*pz);
       l.nx = px / len; l.ny = py / len; l.nz = pz / len;
       l.time = time;
-      l.maxH = 0.04 + Math.random() * 0.16; // random height between 0.04 and 0.20
+      l.maxH = 0.04 + Math.random() * 0.16;
       l.line.visible = true;
     }
 
@@ -371,12 +368,12 @@ const DOT_POSITIONS = new Float32Array([
         }
 
         const opacity = age < LINE_GROW + LINE_HOLD ? 1.0 : 1.0 - (age - LINE_GROW - LINE_HOLD) / LINE_SHRINK;
-        l.line.material.opacity = opacity * 0.8;
+        l.mat.opacity = opacity * 0.65;
 
-        const r0 = 1.002, r1 = 1.002 + length;
-        l.pts[0] = l.nx * r0; l.pts[1] = l.ny * r0; l.pts[2] = l.nz * r0;
-        l.pts[3] = l.nx * r1; l.pts[4] = l.ny * r1; l.pts[5] = l.nz * r1;
-        l.geo.attributes.position.needsUpdate = true;
+        const mid = 1.002 + length / 2;
+        l.line.position.set(l.nx * mid, l.ny * mid, l.nz * mid);
+        l.line.scale.set(1, length, 1);
+        l.line.quaternion.setFromUnitVectors(_yAxis, new THREE.Vector3(l.nx, l.ny, l.nz));
         l.line.visible = true;
       }
 
