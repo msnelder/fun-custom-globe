@@ -257,7 +257,7 @@ const DOT_POSITIONS = new Float32Array([
     const LINE_TOTAL    = LINE_GROW + LINE_HOLD + LINE_SHRINK;
 
     const spikeGeo    = new THREE.CylinderGeometry(0.003, 0.003, 1, 6);
-    const spikeGlowGeo = new THREE.CylinderGeometry(0.024, 0.024, 1, 16, 1, true);
+    const spikeGlowGeo = new THREE.CylinderGeometry(0.012, 0.012, 1, 16, 1, true);
     const _yAxis       = new THREE.Vector3(0, 1, 0);
 
     const linePool = [];
@@ -281,7 +281,7 @@ const DOT_POSITIONS = new Float32Array([
           varying vec2  vUv;
           void main() {
             float facing   = abs(dot(vNormal, vec3(0.0, 0.0, 1.0)));
-            float glow     = pow(facing, 2.0);
+            float glow     = pow(facing, 1.0);
             float topFade  = 1.0 - smoothstep(0.7, 1.0, vUv.y);
             gl_FragColor   = vec4(1.0, 1.0, 1.0, glow * topFade * uOpacity);
           }
@@ -466,9 +466,9 @@ const DOT_POSITIONS = new Float32Array([
 
         l.glowMat.uniforms.uOpacity.value = opacity * 0.4;
         // Shift glow up by 15% of length so it only extends beyond the top
-        const glowMid = 1.002 + length * 0.8;
+        const glowMid = 1.002 + length * 0.9;
         l.glow.position.set(l.nx * glowMid, l.ny * glowMid, l.nz * glowMid);
-        l.glow.scale.set(1, length * 1.6, 1);
+        l.glow.scale.set(1, length * 1.8, 1);
         l.glow.quaternion.copy(l.line.quaternion);
         l.glow.visible = true;
       }
