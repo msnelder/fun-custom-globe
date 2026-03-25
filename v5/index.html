@@ -235,6 +235,7 @@ const DOT_POSITIONS = new Float32Array([
       const len = Math.sqrt(px*px + py*py + pz*pz);
       l.nx = px / len; l.ny = py / len; l.nz = pz / len;
       l.time = time;
+      l.maxH = 0.04 + Math.random() * 0.16; // random height between 0.04 and 0.20
       l.line.visible = true;
     }
 
@@ -362,11 +363,11 @@ const DOT_POSITIONS = new Float32Array([
 
         let length;
         if (age < LINE_GROW) {
-          length = (age / LINE_GROW) * LINE_MAX_H;
+          length = (age / LINE_GROW) * l.maxH;
         } else if (age < LINE_GROW + LINE_HOLD) {
-          length = LINE_MAX_H;
+          length = l.maxH;
         } else {
-          length = LINE_MAX_H * (1.0 - (age - LINE_GROW - LINE_HOLD) / LINE_SHRINK);
+          length = l.maxH * (1.0 - (age - LINE_GROW - LINE_HOLD) / LINE_SHRINK);
         }
 
         const opacity = age < LINE_GROW + LINE_HOLD ? 1.0 : 1.0 - (age - LINE_GROW - LINE_HOLD) / LINE_SHRINK;
