@@ -256,50 +256,16 @@ const DOT_POSITIONS = new Float32Array([
     const LINE_SHRINK   = 2.0;   // seconds to shrink back down
     const LINE_TOTAL    = LINE_GROW + LINE_HOLD + LINE_SHRINK;
 
-    const spikeGeo  = new THREE.CylinderGeometry(0.003, 0.003, 1, 6);
-    const glowPlaneGeo = new THREE.PlaneGeometry(1, 1); // unit size, scaled per spike
-    const _yAxis    = new THREE.Vector3(0, 1, 0);
-
-    const glowShader = {
-      uniforms: { uOpacity: { value: 0.5 } },
-      vertexShader: `
-        varying vec2 vUv;
-        void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
-      `,
-      fragmentShader: `
-        uniform float uOpacity;
-        varying vec2  vUv;
-        void main() {
-          float dist = abs(vUv.x - 0.5) * 2.0; // 0 at center, 1 at edge
-          float glow = pow(1.0 - dist, 2.5);
-          gl_FragColor = vec4(1.0, 1.0, 1.0, glow * uOpacity);
-        }
-      `,
-      transparent: true,
-      depthWrite:  false,
-      blending:    THREE.AdditiveBlending,
-      side:        THREE.DoubleSide,
-    };
+    const spikeGeo = new THREE.CylinderGeometry(0.003, 0.003, 1, 6);
+    const _yAxis   = new THREE.Vector3(0, 1, 0);
 
     const linePool = [];
     for (let i = 0; i < LINE_POOL; i++) {
-      const mat   = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false });
-      const mesh  = new THREE.Mesh(spikeGeo, mat);
-
-      // Two crossed planes for glow
-      const glowGroup = new THREE.Group();
-      const gm1 = new THREE.ShaderMaterial(glowShader);
-      const gm2 = new THREE.ShaderMaterial(glowShader);
-      const gp1  = new THREE.Mesh(glowPlaneGeo, gm1);
-      const gp2  = new THREE.Mesh(glowPlaneGeo, gm2);
-      gp2.rotation.y = Math.PI / 2;
-      glowGroup.add(gp1, gp2);
-
+      const mat  = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false });
+      const mesh = new THREE.Mesh(spikeGeo, mat);
       mesh.visible = false;
-      glowGroup.visible = false;
       globe.add(mesh);
-      globe.add(glowGroup);
-      linePool.push({ line: mesh, mat, glow: glowGroup, glowMats: [gm1, gm2], time: -999, nx: 0, ny: 0, nz: 0, maxH: 0.12 });
+      linePool.push({ line: mesh, mat, time: -999, nx: 0, ny: 0, nz: 0, maxH: 0.12 });
     }
     let nextLine = 0;
 
@@ -363,7 +329,7 @@ const DOT_POSITIONS = new Float32Array([
         flashTimers.fill(-999);
         flashVals.fill(0);
         flashAttr.needsUpdate = true;
-        for (let i = 0; i < LINE_POOL; i++) { linePool[i].time = -999; linePool[i].line.visible = false; linePool[i].glow.visible = false; }
+        for (let i = 0; i < LINE_POOL; i++) { linePool[i].time = -999; linePool[i].line.visible = false; }
         nextFlashAt = t + 0.5;
         lastT = t;
       }
@@ -467,13 +433,6 @@ const DOT_POSITIONS = new Float32Array([
         l.line.quaternion.setFromUnitVectors(_yAxis, normal);
         l.line.visible = true;
 
-        const glowOpacity = opacity * 0.5;
-        for (const gm of l.glowMats) gm.uniforms.uOpacity.value = glowOpacity;
-        const glowWidth = 0.008;
-        l.glow.position.copy(l.line.position);
-        l.glow.scale.set(glowWidth, length, 1);
-        l.glow.quaternion.copy(l.line.quaternion);
-        l.glow.visible = true;
       }
 
       renderer.render(scene, camera);
