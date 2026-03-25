@@ -281,8 +281,8 @@ const DOT_POSITIONS = new Float32Array([
           varying vec2  vUv;
           void main() {
             float facing   = abs(dot(vNormal, vec3(0.0, 0.0, 1.0)));
-            float glow     = pow(facing, 0.5);
-            float topFade  = 1.0 - smoothstep(0.2, 1.0, vUv.y);
+            float glow     = pow(facing, 2.0);
+            float topFade  = 1.0 - smoothstep(0.7, 1.0, vUv.y);
             gl_FragColor   = vec4(1.0, 1.0, 1.0, glow * topFade * uOpacity);
           }
         `,
@@ -466,9 +466,9 @@ const DOT_POSITIONS = new Float32Array([
 
         l.glowMat.uniforms.uOpacity.value = opacity * 0.4;
         // Shift glow up by 15% of length so it only extends beyond the top
-        const glowMid = 1.002 + length * 0.9;
+        const glowMid = 1.002 + length * 0.65;
         l.glow.position.set(l.nx * glowMid, l.ny * glowMid, l.nz * glowMid);
-        l.glow.scale.set(1, length * 1.8, 1);
+        l.glow.scale.set(1, length * 1.3, 1);
         l.glow.quaternion.copy(l.line.quaternion);
         l.glow.visible = true;
       }
