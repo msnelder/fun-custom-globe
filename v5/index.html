@@ -268,18 +268,22 @@ const DOT_POSITIONS = new Float32Array([
         uniforms: { uOpacity: { value: 0.4 } },
         vertexShader: `
           varying vec3 vNormal;
+          varying vec2 vUv;
           void main() {
             vNormal     = normalize(normalMatrix * normal);
+            vUv         = uv;
             gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
           }
         `,
         fragmentShader: `
           uniform float uOpacity;
           varying vec3  vNormal;
+          varying vec2  vUv;
           void main() {
-            float facing = abs(dot(vNormal, vec3(0.0, 0.0, 1.0)));
-            float glow   = pow(facing, 2.0);
-            gl_FragColor = vec4(1.0, 1.0, 1.0, glow * uOpacity);
+            float facing   = abs(dot(vNormal, vec3(0.0, 0.0, 1.0)));
+            float glow     = pow(facing, 2.0);
+            float topFade  = 1.0 - smoothstep(0.7, 1.0, vUv.y);
+            gl_FragColor   = vec4(1.0, 1.0, 1.0, glow * topFade * uOpacity);
           }
         `,
         transparent: true,
