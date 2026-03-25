@@ -264,7 +264,29 @@ const DOT_POSITIONS = new Float32Array([
     for (let i = 0; i < LINE_POOL; i++) {
       const mat      = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false });
       const mesh     = new THREE.Mesh(spikeGeo, mat);
-      const glowMat  = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+      const glowMat  = new THREE.ShaderMaterial({
+        uniforms: { uOpacity: { value: 0.4 } },
+        vertexShader: `
+          varying vec3 vNormal;
+          void main() {
+            vNormal     = normalize(normalMatrix * normal);
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: `
+          uniform float uOpacity;
+          varying vec3  vNormal;
+          void main() {
+            float facing = abs(dot(vNormal, vec3(0.0, 0.0, 1.0)));
+            float glow   = pow(facing, 1.5);
+            gl_FragColor = vec4(1.0, 1.0, 1.0, glow * uOpacity);
+          }
+        `,
+        transparent: true,
+        depthWrite:  false,
+        blending:    THREE.AdditiveBlending,
+        side:        THREE.BackSide,
+      });
       const glowMesh = new THREE.Mesh(spikeGlowGeo, glowMat);
       mesh.visible = false;
       glowMesh.visible = false;
@@ -438,7 +460,7 @@ const DOT_POSITIONS = new Float32Array([
         l.line.quaternion.setFromUnitVectors(_yAxis, normal);
         l.line.visible = true;
 
-        l.glowMat.opacity = opacity * 0.12;
+        l.glowMat.uniforms.uOpacity.value = opacity * 0.4;
         l.glow.position.copy(l.line.position);
         l.glow.scale.set(1, length, 1);
         l.glow.quaternion.copy(l.line.quaternion);
