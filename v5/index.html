@@ -277,15 +277,15 @@ const DOT_POSITIONS = new Float32Array([
           uniform float uOpacity;
           varying vec3  vNormal;
           void main() {
-            float facing = abs(dot(vNormal, vec3(0.0, 0.0, 1.0)));
-            float glow   = pow(facing, 1.5);
+            float rim    = 1.0 - abs(dot(vNormal, vec3(0.0, 0.0, 1.0)));
+            float glow   = pow(rim, 1.5);
             gl_FragColor = vec4(1.0, 1.0, 1.0, glow * uOpacity);
           }
         `,
         transparent: true,
         depthWrite:  false,
         blending:    THREE.AdditiveBlending,
-        side:        THREE.BackSide,
+        side:        THREE.FrontSide,
       });
       const glowMesh = new THREE.Mesh(spikeGlowGeo, glowMat);
       mesh.visible = false;
