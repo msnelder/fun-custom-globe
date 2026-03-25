@@ -281,7 +281,15 @@ const DOT_POSITIONS = new Float32Array([
     // ─── Animate ─────────────────────────────────────────────────────────────
     const clock = new THREE.Clock();
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden) clock.stop(); else clock.start();
+      if (!document.hidden) {
+        const t = clock.getElapsedTime();
+        flashTimers.fill(-999);
+        flashVals.fill(0);
+        flashAttr.needsUpdate = true;
+        for (let i = 0; i < LINE_POOL; i++) { linePool[i].time = -999; linePool[i].line.visible = false; }
+        nextFlashAt = t + 0.5;
+        lastT = t;
+      }
     });
 
     let nextFlashAt = 0.5;
