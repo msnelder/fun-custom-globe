@@ -281,8 +281,8 @@ const DOT_POSITIONS = new Float32Array([
           varying vec2  vUv;
           void main() {
             float facing   = abs(dot(vNormal, vec3(0.0, 0.0, 1.0)));
-            float glow     = pow(facing, 1.0);
-            float topFade  = 1.0 - smoothstep(0.7, 1.0, vUv.y);
+            float glow     = pow(facing, 0.5);
+            float topFade  = 1.0 - smoothstep(0.2, 1.0, vUv.y);
             gl_FragColor   = vec4(1.0, 1.0, 1.0, glow * topFade * uOpacity);
           }
         `,
