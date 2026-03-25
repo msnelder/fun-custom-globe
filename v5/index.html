@@ -256,14 +256,11 @@ const DOT_POSITIONS = new Float32Array([
     const LINE_SHRINK   = 2.0;   // seconds to shrink back down
     const LINE_TOTAL    = LINE_GROW + LINE_HOLD + LINE_SHRINK;
 
-    const spikeGeo    = new THREE.CylinderGeometry(0.003, 0.003, 1, 6);
-    const spikeGlowGeo = new THREE.CylinderGeometry(0.012, 0.012, 1, 16, 1, true);
+    const spikeGlowGeo = new THREE.CylinderGeometry(0.003, 0.003, 1, 16, 1, true);
     const _yAxis       = new THREE.Vector3(0, 1, 0);
 
     const linePool = [];
     for (let i = 0; i < LINE_POOL; i++) {
-      const mat      = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false });
-      const mesh     = new THREE.Mesh(spikeGeo, mat);
       const glowMat  = new THREE.ShaderMaterial({
         uniforms: { uOpacity: { value: 0.4 } },
         vertexShader: `
@@ -292,11 +289,9 @@ const DOT_POSITIONS = new Float32Array([
         side:        THREE.FrontSide,
       });
       const glowMesh = new THREE.Mesh(spikeGlowGeo, glowMat);
-      mesh.visible     = false;
       glowMesh.visible = false;
-      globe.add(mesh);
       globe.add(glowMesh);
-      linePool.push({ line: mesh, mat, glow: glowMesh, glowMat, time: -999, nx: 0, ny: 0, nz: 0, maxH: 0.12 });
+      linePool.push({ line: glowMesh, mat: glowMat, glow: glowMesh, glowMat, time: -999, nx: 0, ny: 0, nz: 0, maxH: 0.12 });
     }
     let nextLine = 0;
 
@@ -455,21 +450,13 @@ const DOT_POSITIONS = new Float32Array([
         }
 
         const opacity = age < LINE_GROW + LINE_HOLD ? 1.0 : 1.0 - (age - LINE_GROW - LINE_HOLD) / LINE_SHRINK;
-        l.mat.opacity = opacity * 0.40;
-
-        const mid = 1.002 + length / 2;
-        const normal = new THREE.Vector3(l.nx, l.ny, l.nz);
-        l.line.position.set(l.nx * mid, l.ny * mid, l.nz * mid);
-        l.line.scale.set(1, length, 1);
-        l.line.quaternion.setFromUnitVectors(_yAxis, normal);
-        l.line.visible = true;
-
         l.glowMat.uniforms.uOpacity.value = opacity * 0.4;
-        // Shift glow up by 15% of length so it only extends beyond the top
+
+        const normal = new THREE.Vector3(l.nx, l.ny, l.nz);
         const glowMid = 1.002 + length * 0.875;
         l.glow.position.set(l.nx * glowMid, l.ny * glowMid, l.nz * glowMid);
         l.glow.scale.set(1, length * 1.75, 1);
-        l.glow.quaternion.copy(l.line.quaternion);
+        l.glow.quaternion.setFromUnitVectors(_yAxis, normal);
         l.glow.visible = true;
       }
 
