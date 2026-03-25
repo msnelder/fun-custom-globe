@@ -265,7 +265,7 @@ const DOT_POSITIONS = new Float32Array([
       const mat      = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false });
       const mesh     = new THREE.Mesh(spikeGeo, mat);
       const glowMat  = new THREE.ShaderMaterial({
-        uniforms: { uOpacity: { value: 0.12 }, uFalloff: { value: 1.5 } },
+        uniforms: { uOpacity: { value: 0.35 }, uFalloff: { value: 1.5 } },
         vertexShader: `
           varying vec2 vLocalXZ;
           void main() {
@@ -285,6 +285,7 @@ const DOT_POSITIONS = new Float32Array([
         `,
         transparent: true,
         depthWrite:  false,
+        depthTest:   false,
         blending:    THREE.AdditiveBlending,
         side:        THREE.DoubleSide,
       });
