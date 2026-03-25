@@ -256,16 +256,21 @@ const DOT_POSITIONS = new Float32Array([
     const LINE_SHRINK   = 2.0;   // seconds to shrink back down
     const LINE_TOTAL    = LINE_GROW + LINE_HOLD + LINE_SHRINK;
 
-    const spikeGeo = new THREE.CylinderGeometry(0.003, 0.003, 1, 6);
-    const _yAxis   = new THREE.Vector3(0, 1, 0);
+    const spikeGeo    = new THREE.CylinderGeometry(0.003, 0.003, 1, 6);
+    const spikeGlowGeo = new THREE.CylinderGeometry(0.010, 0.010, 1, 8);
+    const _yAxis       = new THREE.Vector3(0, 1, 0);
 
     const linePool = [];
     for (let i = 0; i < LINE_POOL; i++) {
-      const mat  = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false });
-      const mesh = new THREE.Mesh(spikeGeo, mat);
+      const mat      = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false });
+      const mesh     = new THREE.Mesh(spikeGeo, mat);
+      const glowMat  = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+      const glowMesh = new THREE.Mesh(spikeGlowGeo, glowMat);
       mesh.visible = false;
+      glowMesh.visible = false;
       globe.add(mesh);
-      linePool.push({ line: mesh, mat, time: -999, nx: 0, ny: 0, nz: 0, maxH: 0.12 });
+      globe.add(glowMesh);
+      linePool.push({ line: mesh, mat, glow: glowMesh, glowMat, time: -999, nx: 0, ny: 0, nz: 0, maxH: 0.12 });
     }
     let nextLine = 0;
 
@@ -329,7 +334,7 @@ const DOT_POSITIONS = new Float32Array([
         flashTimers.fill(-999);
         flashVals.fill(0);
         flashAttr.needsUpdate = true;
-        for (let i = 0; i < LINE_POOL; i++) { linePool[i].time = -999; linePool[i].line.visible = false; }
+        for (let i = 0; i < LINE_POOL; i++) { linePool[i].time = -999; linePool[i].line.visible = false; linePool[i].glow.visible = false; }
         nextFlashAt = t + 0.5;
         lastT = t;
       }
@@ -427,10 +432,17 @@ const DOT_POSITIONS = new Float32Array([
         l.mat.opacity = opacity * 0.40;
 
         const mid = 1.002 + length / 2;
+        const normal = new THREE.Vector3(l.nx, l.ny, l.nz);
         l.line.position.set(l.nx * mid, l.ny * mid, l.nz * mid);
         l.line.scale.set(1, length, 1);
-        l.line.quaternion.setFromUnitVectors(_yAxis, new THREE.Vector3(l.nx, l.ny, l.nz));
+        l.line.quaternion.setFromUnitVectors(_yAxis, normal);
         l.line.visible = true;
+
+        l.glowMat.opacity = opacity * 0.12;
+        l.glow.position.copy(l.line.position);
+        l.glow.scale.set(1, length, 1);
+        l.glow.quaternion.copy(l.line.quaternion);
+        l.glow.visible = true;
       }
 
       renderer.render(scene, camera);
