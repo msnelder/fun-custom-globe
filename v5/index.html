@@ -368,7 +368,7 @@ const DOT_POSITIONS = new Float32Array([
         }
 
         const opacity = age < LINE_GROW + LINE_HOLD ? 1.0 : 1.0 - (age - LINE_GROW - LINE_HOLD) / LINE_SHRINK;
-        l.mat.opacity = opacity * 0.65;
+        l.mat.opacity = opacity * 0.40;
 
         const mid = 1.002 + length / 2;
         l.line.position.set(l.nx * mid, l.ny * mid, l.nz * mid);
