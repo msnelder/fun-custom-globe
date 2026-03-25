@@ -469,7 +469,7 @@ const DOT_POSITIONS = new Float32Array([
 
         const glowOpacity = opacity * 0.5;
         for (const gm of l.glowMats) gm.uniforms.uOpacity.value = glowOpacity;
-        const glowWidth = 0.03;
+        const glowWidth = 0.008;
         l.glow.position.copy(l.line.position);
         l.glow.scale.set(glowWidth, length, 1);
         l.glow.quaternion.copy(l.line.quaternion);
