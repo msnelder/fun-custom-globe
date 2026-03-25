@@ -257,7 +257,7 @@ const DOT_POSITIONS = new Float32Array([
     const LINE_TOTAL    = LINE_GROW + LINE_HOLD + LINE_SHRINK;
 
     const spikeGeo    = new THREE.CylinderGeometry(0.003, 0.003, 1, 6);
-    const spikeGlowGeo = new THREE.CylinderGeometry(0.012, 0.012, 1, 16);
+    const spikeGlowGeo = new THREE.CylinderGeometry(0.012, 0.012, 1, 16, 1, true);
     const _yAxis       = new THREE.Vector3(0, 1, 0);
 
     const linePool = [];
