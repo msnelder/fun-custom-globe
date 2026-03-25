@@ -167,7 +167,22 @@ const DOT_POSITIONS = new Float32Array([
         const d = Math.sqrt((lon-cLon)**2 + (lat-cLat)**2);
         if (d < CITY_R) { const s = 1 - d/CITY_R; if (s > best) best = s; }
       }
-      dotCityWeights[i] = 0.2 + 0.8 * best; // min weight 0.2, max 1.0
+      // Regional boost for high-priority areas
+      const regions = [
+        { lonMin: -170, lonMax: -50, latMin: 15, latMax: 75 },  // North America
+        { lonMin: -15,  lonMax: 45,  latMin: 35, latMax: 72 },  // Europe
+        { lonMin: 124,  lonMax: 130, latMin: 34, latMax: 39 },  // South Korea
+        { lonMin: 129,  lonMax: 146, latMin: 30, latMax: 46 },  // Japan
+        { lonMin: 113,  lonMax: 154, latMin: -44, latMax: -10 }, // Australia
+        { lonMin: 166,  lonMax: 178, latMin: -47, latMax: -34 }, // New Zealand
+      ];
+      let regionBoost = 0;
+      for (const r of regions) {
+        if (lon >= r.lonMin && lon <= r.lonMax && lat >= r.latMin && lat <= r.latMax) {
+          regionBoost = 0.5; break;
+        }
+      }
+      dotCityWeights[i] = Math.min(1.0, 0.2 + 0.8 * best + regionBoost);
     }
 
     // ─── Flash state ─────────────────────────────────────────────────────────
