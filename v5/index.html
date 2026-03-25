@@ -205,6 +205,39 @@ const DOT_POSITIONS = new Float32Array([
 
     globe.add(new THREE.Points(dotsGeo, dotsMat));
 
+    // ─── Line pool ───────────────────────────────────────────────────────────
+    const LINE_POOL     = 20;
+    const LINE_MAX_H    = 0.12;  // max length above surface
+    const LINE_GROW     = 0.4;   // seconds to grow to full height
+    const LINE_HOLD     = 2.0;   // seconds at full height
+    const LINE_SHRINK   = 2.0;   // seconds to shrink back down
+    const LINE_TOTAL    = LINE_GROW + LINE_HOLD + LINE_SHRINK;
+
+    const lineMat = new THREE.LineBasicMaterial({
+      color: 0xffffff, transparent: true, depthWrite: false
+    });
+
+    const linePool = [];
+    for (let i = 0; i < LINE_POOL; i++) {
+      const pts = new Float32Array(6);
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(pts, 3));
+      const line = new THREE.Line(geo, lineMat.clone());
+      line.visible = false;
+      globe.add(line);
+      linePool.push({ line, geo, pts, time: -999, nx: 0, ny: 0, nz: 0 });
+    }
+    let nextLine = 0;
+
+    function triggerLine(px, py, pz, time) {
+      const l = linePool[nextLine];
+      nextLine = (nextLine + 1) % LINE_POOL;
+      const len = Math.sqrt(px*px + py*py + pz*pz);
+      l.nx = px / len; l.ny = py / len; l.nz = pz / len;
+      l.time = time;
+      l.line.visible = true;
+    }
+
     // ─── Resize ──────────────────────────────────────────────────────────────
     window.addEventListener('resize', () => {
       camera.aspect = window.innerWidth / window.innerHeight;
@@ -300,6 +333,7 @@ const DOT_POSITIONS = new Float32Array([
         if (candidates.length > 0) {
           const pick = candidates[Math.floor(Math.random() * candidates.length)];
           flashTimers[pick] = elapsed;
+          triggerLine(positions[pick*3], positions[pick*3+1], positions[pick*3+2], elapsed);
           dirty = true;
         }
       }
@@ -319,6 +353,31 @@ const DOT_POSITIONS = new Float32Array([
       }
 
       if (dirty) flashAttr.needsUpdate = true;
+
+      // ── Animate lines ───────────────────────────────────────────────────────
+      for (let i = 0; i < LINE_POOL; i++) {
+        const l = linePool[i];
+        const age = elapsed - l.time;
+        if (age < 0 || age > LINE_TOTAL) { l.line.visible = false; continue; }
+
+        let length;
+        if (age < LINE_GROW) {
+          length = (age / LINE_GROW) * LINE_MAX_H;
+        } else if (age < LINE_GROW + LINE_HOLD) {
+          length = LINE_MAX_H;
+        } else {
+          length = LINE_MAX_H * (1.0 - (age - LINE_GROW - LINE_HOLD) / LINE_SHRINK);
+        }
+
+        const opacity = age < LINE_GROW + LINE_HOLD ? 1.0 : 1.0 - (age - LINE_GROW - LINE_HOLD) / LINE_SHRINK;
+        l.line.material.opacity = opacity * 0.8;
+
+        const r0 = 1.002, r1 = 1.002 + length;
+        l.pts[0] = l.nx * r0; l.pts[1] = l.ny * r0; l.pts[2] = l.nz * r0;
+        l.pts[3] = l.nx * r1; l.pts[4] = l.ny * r1; l.pts[5] = l.nz * r1;
+        l.geo.attributes.position.needsUpdate = true;
+        l.line.visible = true;
+      }
 
       renderer.render(scene, camera);
     })();
