@@ -105,12 +105,6 @@ const DOT_POSITIONS = new Float32Array([
       })
     ));
 
-    // ─── Solid mask sphere (blocks halo from showing through globe) ─────────
-    globe.add(new THREE.Mesh(
-      sphereGeo,
-      new THREE.MeshBasicMaterial({ color: 0x000000, depthWrite: true })
-    ));
-
     // ─── Atmospheric halo ────────────────────────────────────────────────────
     globe.add(new THREE.Mesh(
       new THREE.SphereGeometry(1.05, 64, 64),
