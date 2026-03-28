@@ -528,7 +528,7 @@ const DOT_POSITIONS = new Float32Array([
         l.glow.quaternion.setFromUnitVectors(_yAxis, normal);
         l.glow.visible = true;
 
-        const haloLength = length * 1.5;
+        const haloLength = length * 2.0;
         const haloMid    = 1.002 + haloLength * 0.875;
         l.haloMat.uniforms.uOpacity.value = opacity * 0.0225;
         l.halo.position.set(l.nx * haloMid, l.ny * haloMid, l.nz * haloMid);
