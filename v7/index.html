@@ -291,7 +291,7 @@ const DOT_POSITIONS = new Float32Array([
       });
 
       const haloMat = new THREE.ShaderMaterial({
-        uniforms: { uOpacity: { value: 0.09 } },
+        uniforms: { uOpacity: { value: 0.045 } },
         vertexShader: `
           varying vec3 vNormal;
           varying vec2 vUv;
@@ -307,7 +307,7 @@ const DOT_POSITIONS = new Float32Array([
           varying vec2  vUv;
           void main() {
             float facing   = abs(dot(vNormal, vec3(0.0, 0.0, 1.0)));
-            float glow     = pow(facing, 0.4);
+            float glow     = pow(facing, 0.2);
             float topFade  = 1.0 - smoothstep(0.3, 1.0, vUv.y);
             gl_FragColor   = vec4(1.0, 1.0, 1.0, glow * topFade * uOpacity);
           }
@@ -493,9 +493,11 @@ const DOT_POSITIONS = new Float32Array([
         l.glow.quaternion.setFromUnitVectors(_yAxis, normal);
         l.glow.visible = true;
 
-        l.haloMat.uniforms.uOpacity.value = opacity * 0.09;
-        l.halo.position.set(l.nx * glowMid, l.ny * glowMid, l.nz * glowMid);
-        l.halo.scale.set(1, length * 1.75, 1);
+        const haloLength = length * 1.5;
+        const haloMid    = 1.002 + haloLength * 0.875;
+        l.haloMat.uniforms.uOpacity.value = opacity * 0.045;
+        l.halo.position.set(l.nx * haloMid, l.ny * haloMid, l.nz * haloMid);
+        l.halo.scale.set(1, haloLength * 1.75, 1);
         l.halo.quaternion.setFromUnitVectors(_yAxis, normal);
         l.halo.visible = true;
       }
