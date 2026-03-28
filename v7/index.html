@@ -257,7 +257,8 @@ const DOT_POSITIONS = new Float32Array([
     const LINE_TOTAL    = LINE_GROW + LINE_HOLD + LINE_SHRINK;
 
     const spikeGlowGeo = new THREE.CylinderGeometry(0.006, 0.006, 1, 16, 1, true);
-    const spikeHaloGeo = new THREE.CylinderGeometry(0.007, 0.007, 1, 16, 1, true);
+    const spikeHaloGeo  = new THREE.CylinderGeometry(0.007, 0.007, 1, 16, 1, true);
+    const spikeOuterGeo = new THREE.CylinderGeometry(0.05,  0.05,  1, 16, 1, true);
     const _yAxis       = new THREE.Vector3(0, 1, 0);
 
     const linePool = [];
@@ -319,13 +320,45 @@ const DOT_POSITIONS = new Float32Array([
         side:        THREE.DoubleSide,
       });
 
-      const glowMesh = new THREE.Mesh(spikeGlowGeo, glowMat);
-      const haloMesh = new THREE.Mesh(spikeHaloGeo, haloMat);
-      glowMesh.visible = false;
-      haloMesh.visible = false;
+      const outerMat = new THREE.ShaderMaterial({
+        uniforms: { uOpacity: { value: 0.01 } },
+        vertexShader: `
+          varying vec3 vNormal;
+          varying vec2 vUv;
+          void main() {
+            vNormal     = normalize(normalMatrix * normal);
+            vUv         = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: `
+          uniform float uOpacity;
+          varying vec3  vNormal;
+          varying vec2  vUv;
+          void main() {
+            float facing   = abs(dot(vNormal, vec3(0.0, 0.0, 1.0)));
+            float glow     = pow(facing, 0.1);
+            float topFade  = 1.0 - smoothstep(0.3, 1.0, vUv.y);
+            gl_FragColor   = vec4(1.0, 1.0, 1.0, glow * topFade * uOpacity);
+          }
+        `,
+        transparent: true,
+        depthWrite:  false,
+        depthTest:   false,
+        blending:    THREE.NormalBlending,
+        side:        THREE.DoubleSide,
+      });
+
+      const glowMesh  = new THREE.Mesh(spikeGlowGeo,  glowMat);
+      const haloMesh  = new THREE.Mesh(spikeHaloGeo,  haloMat);
+      const outerMesh = new THREE.Mesh(spikeOuterGeo, outerMat);
+      glowMesh.visible  = false;
+      haloMesh.visible  = false;
+      outerMesh.visible = false;
       globe.add(glowMesh);
       globe.add(haloMesh);
-      linePool.push({ line: glowMesh, mat: glowMat, glow: glowMesh, glowMat, halo: haloMesh, haloMat, time: -999, nx: 0, ny: 0, nz: 0, maxH: 0.12 });
+      globe.add(outerMesh);
+      linePool.push({ line: glowMesh, mat: glowMat, glow: glowMesh, glowMat, halo: haloMesh, haloMat, outer: outerMesh, outerMat, time: -999, nx: 0, ny: 0, nz: 0, maxH: 0.12 });
     }
     let nextLine = 0;
 
@@ -336,8 +369,9 @@ const DOT_POSITIONS = new Float32Array([
       l.nx = px / len; l.ny = py / len; l.nz = pz / len;
       l.time = time;
       l.maxH = 0.04 + Math.random() * 0.16;
-      l.line.visible = true;
-      l.halo.visible = true;
+      l.line.visible  = true;
+      l.halo.visible  = true;
+      l.outer.visible = true;
     }
 
     // ─── Resize ──────────────────────────────────────────────────────────────
@@ -390,7 +424,7 @@ const DOT_POSITIONS = new Float32Array([
         flashTimers.fill(-999);
         flashVals.fill(0);
         flashAttr.needsUpdate = true;
-        for (let i = 0; i < LINE_POOL; i++) { linePool[i].time = -999; linePool[i].line.visible = false; linePool[i].halo.visible = false; }
+        for (let i = 0; i < LINE_POOL; i++) { linePool[i].time = -999; linePool[i].line.visible = false; linePool[i].halo.visible = false; linePool[i].outer.visible = false; }
         nextFlashAt = t + 0.5;
         lastT = t;
       }
@@ -473,7 +507,7 @@ const DOT_POSITIONS = new Float32Array([
       for (let i = 0; i < LINE_POOL; i++) {
         const l = linePool[i];
         const age = elapsed - l.time;
-        if (age < 0 || age > LINE_TOTAL) { l.line.visible = false; l.halo.visible = false; continue; }
+        if (age < 0 || age > LINE_TOTAL) { l.line.visible = false; l.halo.visible = false; l.outer.visible = false; continue; }
 
         let length;
         if (age < LINE_GROW) {
@@ -501,6 +535,14 @@ const DOT_POSITIONS = new Float32Array([
         l.halo.scale.set(1, haloLength * 1.75, 1);
         l.halo.quaternion.setFromUnitVectors(_yAxis, normal);
         l.halo.visible = true;
+
+        const outerLength = length * 1.5;
+        const outerMid    = 1.002 + outerLength * 0.875;
+        l.outerMat.uniforms.uOpacity.value = opacity * 0.01;
+        l.outer.position.set(l.nx * outerMid, l.ny * outerMid, l.nz * outerMid);
+        l.outer.scale.set(1, outerLength * 1.75, 1);
+        l.outer.quaternion.setFromUnitVectors(_yAxis, normal);
+        l.outer.visible = true;
       }
 
       renderer.render(scene, camera);
