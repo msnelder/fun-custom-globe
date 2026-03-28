@@ -314,8 +314,9 @@ const DOT_POSITIONS = new Float32Array([
         `,
         transparent: true,
         depthWrite:  false,
+        depthTest:   false,
         blending:    THREE.AdditiveBlending,
-        side:        THREE.FrontSide,
+        side:        THREE.DoubleSide,
       });
 
       const glowMesh = new THREE.Mesh(spikeGlowGeo, glowMat);
