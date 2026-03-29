@@ -105,33 +105,6 @@ const DOT_POSITIONS = new Float32Array([
       })
     ));
 
-    // ─── Directional light ───────────────────────────────────────────────────
-    globe.add(new THREE.Mesh(
-      sphereGeo,
-      new THREE.ShaderMaterial({
-        vertexShader: `
-          varying vec3 vNormal;
-          void main() {
-            vNormal = normalize(normalMatrix * normal);
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-          }
-        `,
-        fragmentShader: `
-          varying vec3 vNormal;
-          void main() {
-            vec3  lightDir = normalize(vec3(-0.6, 0.6, 0.8));
-            float light    = dot(vNormal, lightDir);
-            float bright   = max(0.0, light);
-            vec3  color    = vec3(0.55, 0.60, 0.70);
-            gl_FragColor   = vec4(color, bright * 0.2);
-          }
-        `,
-        transparent: true,
-        blending:    THREE.AdditiveBlending,
-        depthWrite:  false,
-      })
-    ));
-
     // ─── Atmospheric halo ────────────────────────────────────────────────────
     globe.add(new THREE.Mesh(
       new THREE.SphereGeometry(1.05, 64, 64),
@@ -228,10 +201,6 @@ const DOT_POSITIONS = new Float32Array([
     flashAttr.setUsage(THREE.DynamicDrawUsage);
     dotsGeo.setAttribute('aFlash', flashAttr);
 
-    const flashHues    = new Float32Array(DOT_COUNT).fill(0);
-    const flashHueAttr = new THREE.BufferAttribute(flashHues, 1);
-    flashHueAttr.setUsage(THREE.DynamicDrawUsage);
-    dotsGeo.setAttribute('aFlashHue', flashHueAttr);
 
     const dotsMat = new THREE.ShaderMaterial({
       uniforms: {
@@ -241,18 +210,15 @@ const DOT_POSITIONS = new Float32Array([
         uniform float uSize;
         attribute float aOpacity;
         attribute float aFlash;
-        attribute float aFlashHue;
         varying float vOpacity;
         varying float vFlash;
-        varying float vFlashHue;
 
         void main() {
           vec4 mvPos      = modelViewMatrix * vec4(position, 1.0);
           float depth     = clamp((-mvPos.z - 2.0) / 2.0, 0.0, 1.0);
           float depthFade = 0.05 + 0.95 * (1.0 - depth);
-          vOpacity  = aOpacity * depthFade;
-          vFlash    = aFlash;
-          vFlashHue = aFlashHue;
+          vOpacity = aOpacity * depthFade;
+          vFlash   = aFlash;
           gl_PointSize = uSize;
           gl_Position  = projectionMatrix * mvPos;
         }
@@ -260,7 +226,6 @@ const DOT_POSITIONS = new Float32Array([
       fragmentShader: `
         varying float vOpacity;
         varying float vFlash;
-        varying float vFlashHue;
 
         void main() {
           vec2  uv = gl_PointCoord - vec2(0.5);
@@ -268,11 +233,9 @@ const DOT_POSITIONS = new Float32Array([
           if (r > 0.5) discard;
           float alpha = 1.0 - smoothstep(0.25, 0.5, r);
 
-          vec3 base       = vec3(0.45, 0.45, 0.45);
-          vec3 flashWhite = vec3(0.95, 0.97, 1.00);
-          vec3 flashBlue  = vec3(0.70, 0.85, 1.00);
-          vec3 flashed    = mix(flashWhite, flashBlue, vFlashHue);
-          vec3 color      = mix(base, flashed, vFlash);
+          vec3 base    = vec3(0.45, 0.45, 0.45);
+          vec3 flashed = vec3(0.95, 0.97, 1.00);
+          vec3 color   = mix(base, flashed, vFlash);
 
           float opacityMult = mix(0.4, 1.0, vFlash);
           gl_FragColor = vec4(color, alpha * vOpacity * opacityMult);
@@ -297,7 +260,6 @@ const DOT_POSITIONS = new Float32Array([
     const spikeHaloGeo  = new THREE.CylinderGeometry(0.002, 0.009, 1, 16, 1, true);
     const spikeOuterGeo = new THREE.CylinderGeometry(0.02,  0.1,   1, 16, 1, true);
     const _yAxis        = new THREE.Vector3(0, 1, 0);
-    const _zAxis        = new THREE.Vector3(0, 0, 1);
 
     const linePool = [];
     for (let i = 0; i < LINE_POOL; i++) {
@@ -400,32 +362,6 @@ const DOT_POSITIONS = new Float32Array([
     }
     let nextLine = 0;
 
-    // ─── Pulse disc pool ─────────────────────────────────────────────────────
-    const DISC_POOL = 20;
-    const DISC_DUR  = 0.6;   // seconds for ring to expand and fade
-    const discGeo   = new THREE.RingGeometry(0.82, 1.0, 32);
-    const discPool  = [];
-    for (let i = 0; i < DISC_POOL; i++) {
-      const discMat = new THREE.ShaderMaterial({
-        uniforms: { uOpacity: { value: 0.0 } },
-        vertexShader: `void main() { gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-        fragmentShader: `
-          uniform float uOpacity;
-          void main() { gl_FragColor = vec4(1.0, 1.0, 1.0, uOpacity); }
-        `,
-        transparent: true,
-        depthWrite:  false,
-        depthTest:   false,
-        blending:    THREE.AdditiveBlending,
-        side:        THREE.DoubleSide,
-      });
-      const discMesh = new THREE.Mesh(discGeo, discMat);
-      discMesh.visible = false;
-      globe.add(discMesh);
-      discPool.push({ mesh: discMesh, mat: discMat, time: -999, nx: 0, ny: 0, nz: 0 });
-    }
-    let nextDisc = 0;
-
     function triggerLine(px, py, pz, time) {
       const l = linePool[nextLine];
       nextLine = (nextLine + 1) % LINE_POOL;
@@ -436,12 +372,6 @@ const DOT_POSITIONS = new Float32Array([
       l.line.visible  = true;
       l.halo.visible  = true;
       l.outer.visible = true;
-
-      const d = discPool[nextDisc];
-      nextDisc = (nextDisc + 1) % DISC_POOL;
-      d.nx = l.nx; d.ny = l.ny; d.nz = l.nz;
-      d.time = time;
-      d.mesh.visible = true;
     }
 
     // ─── Resize ──────────────────────────────────────────────────────────────
@@ -454,7 +384,7 @@ const DOT_POSITIONS = new Float32Array([
     // ─── Drag to rotate ──────────────────────────────────────────────────────
     const AUTO_SPEED = 0.0003;
     const DRAG_SCALE = 0.005;
-    const FRICTION   = 0.95;
+    const FRICTION   = 0.92;
 
     let isDragging = false;
     let prevX = 0, prevY = 0;
@@ -495,7 +425,6 @@ const DOT_POSITIONS = new Float32Array([
         flashVals.fill(0);
         flashAttr.needsUpdate = true;
         for (let i = 0; i < LINE_POOL; i++) { linePool[i].time = -999; linePool[i].line.visible = false; linePool[i].halo.visible = false; linePool[i].outer.visible = false; }
-        for (let i = 0; i < DISC_POOL; i++) { discPool[i].time = -999; discPool[i].mesh.visible = false; }
         nextFlashAt = t + 0.5;
         lastT = t;
       }
@@ -524,7 +453,7 @@ const DOT_POSITIONS = new Float32Array([
           globe.rotation.x += velY;
           globe.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, globe.rotation.x));
         } else {
-          globe.rotation.y += AUTO_SPEED * (1.0 + 0.12 * Math.sin(elapsed * 0.25));
+          globe.rotation.y += AUTO_SPEED;
         }
       }
 
@@ -553,8 +482,6 @@ const DOT_POSITIONS = new Float32Array([
           let pick = candidates[0];
           for (const j of candidates) { r -= dotCityWeights[j]; if (r <= 0) { pick = j; break; } }
           flashTimers[pick] = elapsed;
-          flashHues[pick]   = Math.random() < 0.15 ? 1.0 : 0.0;
-          flashHueAttr.needsUpdate = true;
           triggerLine(positions[pick*3], positions[pick*3+1], positions[pick*3+2], elapsed);
           dirty = true;
         }
@@ -620,21 +547,6 @@ const DOT_POSITIONS = new Float32Array([
         l.outer.scale.set(1, outerLength * 1.75, 1);
         l.outer.quaternion.setFromUnitVectors(_yAxis, normal);
         l.outer.visible = true;
-      }
-
-      // ── Animate pulse discs ─────────────────────────────────────────────────
-      for (let i = 0; i < DISC_POOL; i++) {
-        const d = discPool[i];
-        const age = elapsed - d.time;
-        if (age < 0 || age > DISC_DUR) { d.mesh.visible = false; continue; }
-        const t      = age / DISC_DUR;
-        const scale  = 0.01 + t * 0.12;
-        const normal = new THREE.Vector3(d.nx, d.ny, d.nz);
-        d.mat.uniforms.uOpacity.value = (1.0 - t) * 0.35;
-        d.mesh.position.set(d.nx * 1.003, d.ny * 1.003, d.nz * 1.003);
-        d.mesh.scale.set(scale, scale, scale);
-        d.mesh.quaternion.setFromUnitVectors(_zAxis, normal);
-        d.mesh.visible = true;
       }
 
       renderer.render(scene, camera);
