@@ -488,14 +488,10 @@ const DOT_POSITIONS = new Float32Array([
       }
 
       // ── Update flash values ─────────────────────────────────────────────────
-      const EASE_IN = 0.15;
       for (let i = 0; i < DOT_COUNT; i++) {
         const a = elapsed - flashTimers[i];
         let v = 0.0;
-        if (a < EASE_IN) {
-          const t = a / EASE_IN;
-          v = t * t * (3.0 - 2.0 * t); // smoothstep ease-in
-        } else if (a < FLASH_HOLD) {
+        if (a < FLASH_HOLD) {
           v = 1.0;
         } else if (a < FLASH_TOTAL) {
           const p = (a - FLASH_HOLD) / FLASH_FADE;
