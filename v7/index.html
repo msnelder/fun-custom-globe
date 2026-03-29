@@ -198,9 +198,8 @@ const DOT_POSITIONS = new Float32Array([
     dotsGeo.setAttribute('aOpacity', new THREE.BufferAttribute(opacities, 1));
 
     const flashAttr = new THREE.BufferAttribute(flashVals, 1);
-    flashAttr.setUsage(THREE.DynamicDrawUsage);
+    flashAttr.setUsage(THREE.DynamicDrawUsage); // tell GPU this updates every frame
     dotsGeo.setAttribute('aFlash', flashAttr);
-
 
     const dotsMat = new THREE.ShaderMaterial({
       uniforms: {
@@ -233,10 +232,11 @@ const DOT_POSITIONS = new Float32Array([
           if (r > 0.5) discard;
           float alpha = 1.0 - smoothstep(0.25, 0.5, r);
 
-          vec3 base    = vec3(0.45, 0.45, 0.45);
-          vec3 flashed = vec3(0.95, 0.97, 1.00);
+          vec3 base    = vec3(0.45, 0.45, 0.45);       // resting gray
+          vec3 flashed = vec3(0.95, 0.97, 1.00);        // near-white flash
           vec3 color   = mix(base, flashed, vFlash);
 
+          // Resting dots 30% dimmer; flashing dots unaffected
           float opacityMult = mix(0.4, 1.0, vFlash);
           gl_FragColor = vec4(color, alpha * vOpacity * opacityMult);
         }
@@ -256,10 +256,10 @@ const DOT_POSITIONS = new Float32Array([
     const LINE_SHRINK   = 2.0;   // seconds to shrink back down
     const LINE_TOTAL    = LINE_GROW + LINE_HOLD + LINE_SHRINK;
 
-    const spikeGlowGeo  = new THREE.CylinderGeometry(0.001, 0.006, 1, 16, 1, true);
-    const spikeHaloGeo  = new THREE.CylinderGeometry(0.002, 0.009, 1, 16, 1, true);
-    const spikeOuterGeo = new THREE.CylinderGeometry(0.02,  0.1,   1, 16, 1, true);
-    const _yAxis        = new THREE.Vector3(0, 1, 0);
+    const spikeGlowGeo = new THREE.CylinderGeometry(0.006, 0.006, 1, 16, 1, true);
+    const spikeHaloGeo  = new THREE.CylinderGeometry(0.009, 0.009, 1, 16, 1, true);
+    const spikeOuterGeo = new THREE.CylinderGeometry(0.1, 0.1, 1, 16, 1, true);
+    const _yAxis       = new THREE.Vector3(0, 1, 0);
 
     const linePool = [];
     for (let i = 0; i < LINE_POOL; i++) {
