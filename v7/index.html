@@ -258,7 +258,7 @@ const DOT_POSITIONS = new Float32Array([
 
     const spikeGlowGeo = new THREE.CylinderGeometry(0.006, 0.006, 1, 16, 1, true);
     const spikeHaloGeo  = new THREE.CylinderGeometry(0.009, 0.009, 1, 16, 1, true);
-    const spikeOuterGeo = new THREE.CylinderGeometry(0.05,  0.05,  1, 16, 1, true);
+    const spikeOuterGeo = new THREE.CylinderGeometry(0.009, 0.009, 1, 16, 1, true);
     const _yAxis       = new THREE.Vector3(0, 1, 0);
 
     const linePool = [];
@@ -337,7 +337,7 @@ const DOT_POSITIONS = new Float32Array([
           varying vec2  vUv;
           void main() {
             float facing   = abs(dot(vNormal, vec3(0.0, 0.0, 1.0)));
-            float glow     = pow(facing, 0.1);
+            float glow     = pow(facing, 0.01);
             float topFade  = 1.0 - smoothstep(0.3, 1.0, vUv.y);
             gl_FragColor   = vec4(1.0, 1.0, 1.0, glow * topFade * uOpacity);
           }
