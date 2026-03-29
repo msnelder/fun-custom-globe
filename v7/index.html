@@ -321,7 +321,7 @@ const DOT_POSITIONS = new Float32Array([
       });
 
       const outerMat = new THREE.ShaderMaterial({
-        uniforms: { uOpacity: { value: 0.01 } },
+        uniforms: { uOpacity: { value: 0.04 } },
         vertexShader: `
           varying vec3 vNormal;
           varying vec2 vUv;
@@ -536,9 +536,9 @@ const DOT_POSITIONS = new Float32Array([
         l.halo.quaternion.setFromUnitVectors(_yAxis, normal);
         l.halo.visible = true;
 
-        const outerLength = length * 1.5;
+        const outerLength = length * 2.0;
         const outerMid    = 1.002 + outerLength * 0.875;
-        l.outerMat.uniforms.uOpacity.value = opacity * 0.01;
+        l.outerMat.uniforms.uOpacity.value = opacity * 0.04;
         l.outer.position.set(l.nx * outerMid, l.ny * outerMid, l.nz * outerMid);
         l.outer.scale.set(1, outerLength * 1.75, 1);
         l.outer.quaternion.setFromUnitVectors(_yAxis, normal);
