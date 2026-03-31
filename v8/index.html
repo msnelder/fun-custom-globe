@@ -248,51 +248,16 @@ const DOT_POSITIONS = new Float32Array([
 
     globe.add(new THREE.Points(dotsGeo, dotsMat));
 
-    // ─── Line pool ───────────────────────────────────────────────────────────
-    const LINE_POOL     = 20;
-    const LINE_MAX_H    = 0.12;  // max length above surface
-    const LINE_GROW     = 0.4;   // seconds to grow to full height
-    const LINE_HOLD     = 6.0;   // seconds at full height
-    const LINE_SHRINK   = 2.0;   // seconds to shrink back down
-    const LINE_TOTAL    = LINE_GROW + LINE_HOLD + LINE_SHRINK;
+    // ─── Spike stream system ─────────────────────────────────────────────────
+    const LINE_POOL  = 20;
+    const LINE_HOLD  = 6.0;
+    const LINE_SHRINK = 2.0;
+    const LINE_TOTAL = LINE_HOLD + LINE_SHRINK;
 
-    const spikeGlowGeo = new THREE.CylinderGeometry(0.006, 0.006, 1, 16, 1, true);
-    const _yAxis       = new THREE.Vector3(0, 1, 0);
-
+    // Spike origins — just spatial data, no meshes
     const linePool = [];
     for (let i = 0; i < LINE_POOL; i++) {
-      const glowMat  = new THREE.ShaderMaterial({
-        uniforms: { uOpacity: { value: 0.6 } },
-        vertexShader: `
-          varying vec3 vNormal;
-          varying vec2 vUv;
-          void main() {
-            vNormal     = normalize(normalMatrix * normal);
-            vUv         = uv;
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-          }
-        `,
-        fragmentShader: `
-          uniform float uOpacity;
-          varying vec3  vNormal;
-          varying vec2  vUv;
-          void main() {
-            float facing   = abs(dot(vNormal, vec3(0.0, 0.0, 1.0)));
-            float glow     = pow(facing, 4.0);
-            float topFade  = 1.0 - smoothstep(0.4, 1.0, vUv.y);
-            gl_FragColor   = vec4(1.0, 1.0, 1.0, glow * topFade * uOpacity);
-          }
-        `,
-        transparent: true,
-        depthWrite:  false,
-        blending:    THREE.AdditiveBlending,
-        side:        THREE.FrontSide,
-      });
-
-      const glowMesh = new THREE.Mesh(spikeGlowGeo, glowMat);
-      glowMesh.visible = false;
-      globe.add(glowMesh);
-      linePool.push({ line: glowMesh, mat: glowMat, glow: glowMesh, glowMat, time: -999, nx: 0, ny: 0, nz: 0, maxH: 0.12 });
+      linePool.push({ time: -999, nx: 0, ny: 0, nz: 0, maxH: 0.12 });
     }
     let nextLine = 0;
 
@@ -302,8 +267,75 @@ const DOT_POSITIONS = new Float32Array([
       const len = Math.sqrt(px*px + py*py + pz*pz);
       l.nx = px / len; l.ny = py / len; l.nz = pz / len;
       l.time = time;
-      l.maxH = 0.04 + Math.random() * 0.16;
-      l.line.visible = true;
+      l.maxH = 0.06 + Math.random() * 0.14;
+    }
+
+    // ─── Particle stream ─────────────────────────────────────────────────────
+    const MAX_PARTICLES   = 800;
+    const SPAWN_RATE      = 14;   // particles per second per active spike
+    const PART_SPEED_MIN  = 0.05;
+    const PART_SPEED_MAX  = 0.20;
+
+    const pActive  = new Uint8Array(MAX_PARTICLES);
+    const pLine    = new Int32Array(MAX_PARTICLES).fill(-1);
+    const pT       = new Float32Array(MAX_PARTICLES);  // distance traveled along normal
+    const pSpeed   = new Float32Array(MAX_PARTICLES);
+    const pMaxT    = new Float32Array(MAX_PARTICLES);
+
+    const streamPos     = new Float32Array(MAX_PARTICLES * 3);
+    const streamAlpha   = new Float32Array(MAX_PARTICLES);
+    const streamGeo     = new THREE.BufferGeometry();
+    const streamPosAttr = new THREE.BufferAttribute(streamPos, 3);
+    const streamAlpAttr = new THREE.BufferAttribute(streamAlpha, 1);
+    streamPosAttr.setUsage(THREE.DynamicDrawUsage);
+    streamAlpAttr.setUsage(THREE.DynamicDrawUsage);
+    streamGeo.setAttribute('position', streamPosAttr);
+    streamGeo.setAttribute('aAlpha',   streamAlpAttr);
+
+    const streamMat = new THREE.ShaderMaterial({
+      uniforms: { uSize: { value: 2.8 * dpr } },
+      vertexShader: `
+        uniform float uSize;
+        attribute float aAlpha;
+        varying float vAlpha;
+        void main() {
+          vAlpha = aAlpha;
+          vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+          float depth = clamp((-mvPos.z - 2.0) / 2.0, 0.0, 1.0);
+          vAlpha *= 0.2 + 0.8 * (1.0 - depth);
+          gl_PointSize = uSize;
+          gl_Position  = projectionMatrix * mvPos;
+        }
+      `,
+      fragmentShader: `
+        varying float vAlpha;
+        void main() {
+          vec2  uv = gl_PointCoord - vec2(0.5);
+          if (length(uv) > 0.5) discard;
+          float a = 1.0 - smoothstep(0.15, 0.5, length(uv));
+          gl_FragColor = vec4(0.88, 0.94, 1.0, a * vAlpha);
+        }
+      `,
+      transparent: true,
+      depthWrite:  false,
+      blending:    THREE.AdditiveBlending,
+    });
+    globe.add(new THREE.Points(streamGeo, streamMat));
+
+    let nextParticle = 0;
+    function spawnParticle(lineIdx) {
+      for (let k = 0; k < MAX_PARTICLES; k++) {
+        const idx = (nextParticle + k) % MAX_PARTICLES;
+        if (!pActive[idx]) {
+          pActive[idx] = 1;
+          pLine[idx]   = lineIdx;
+          pT[idx]      = Math.random() * 0.01; // tiny random start offset
+          pSpeed[idx]  = PART_SPEED_MIN + Math.random() * (PART_SPEED_MAX - PART_SPEED_MIN);
+          pMaxT[idx]   = linePool[lineIdx].maxH;
+          nextParticle = (idx + 1) % MAX_PARTICLES;
+          return;
+        }
+      }
     }
 
     // ─── Resize ──────────────────────────────────────────────────────────────
@@ -356,7 +388,8 @@ const DOT_POSITIONS = new Float32Array([
         flashTimers.fill(-999);
         flashVals.fill(0);
         flashAttr.needsUpdate = true;
-        for (let i = 0; i < LINE_POOL; i++) { linePool[i].time = -999; linePool[i].line.visible = false; }
+        for (let i = 0; i < LINE_POOL; i++) linePool[i].time = -999;
+        pActive.fill(0); streamAlpha.fill(0); streamAlpAttr.needsUpdate = true;
         nextFlashAt = t + 0.5;
         lastT = t;
       }
@@ -435,32 +468,42 @@ const DOT_POSITIONS = new Float32Array([
 
       if (dirty) flashAttr.needsUpdate = true;
 
-      // ── Animate lines ───────────────────────────────────────────────────────
+      // ── Spawn particles for active spikes ───────────────────────────────────
       for (let i = 0; i < LINE_POOL; i++) {
         const l = linePool[i];
         const age = elapsed - l.time;
-        if (age < 0 || age > LINE_TOTAL) { l.line.visible = false; continue; }
+        if (age < 0 || age > LINE_HOLD) continue;
+        const expected = SPAWN_RATE * dt;
+        const count = Math.floor(expected) + (Math.random() < (expected % 1) ? 1 : 0);
+        for (let s = 0; s < count; s++) spawnParticle(i);
+      }
 
-        let length;
-        if (age < LINE_GROW) {
-          length = (age / LINE_GROW) * l.maxH;
-        } else if (age < LINE_GROW + LINE_HOLD) {
-          length = l.maxH;
-        } else {
-          length = l.maxH * (1.0 - (age - LINE_GROW - LINE_HOLD) / LINE_SHRINK);
+      // ── Update particles ─────────────────────────────────────────────────────
+      let streamDirty = false;
+      for (let i = 0; i < MAX_PARTICLES; i++) {
+        if (!pActive[i]) {
+          if (streamAlpha[i] !== 0) { streamAlpha[i] = 0; streamDirty = true; }
+          continue;
+        }
+        pT[i] += pSpeed[i] * dt;
+        const l = linePool[pLine[i]];
+        const lineAge = elapsed - l.time;
+
+        if (pT[i] >= pMaxT[i] || lineAge > LINE_TOTAL) {
+          pActive[i] = 0; streamAlpha[i] = 0; streamDirty = true; continue;
         }
 
-        const opacity = age < LINE_GROW + LINE_HOLD ? 1.0 : 1.0 - (age - LINE_GROW - LINE_HOLD) / LINE_SHRINK;
-        l.glowMat.uniforms.uOpacity.value = opacity * 0.6;
+        const dist = 1.003 + pT[i];
+        streamPos[i * 3]     = l.nx * dist;
+        streamPos[i * 3 + 1] = l.ny * dist;
+        streamPos[i * 3 + 2] = l.nz * dist;
 
-        const normal = new THREE.Vector3(l.nx, l.ny, l.nz);
-        const glowMid = 1.002 + length * 0.875;
-        l.glow.position.set(l.nx * glowMid, l.ny * glowMid, l.nz * glowMid);
-        l.glow.scale.set(1, length * 1.75, 1);
-        l.glow.quaternion.setFromUnitVectors(_yAxis, normal);
-        l.glow.visible = true;
-
+        const progress    = pT[i] / pMaxT[i];
+        const lineOpacity = lineAge < LINE_HOLD ? 1.0 : 1.0 - (lineAge - LINE_HOLD) / LINE_SHRINK;
+        streamAlpha[i]    = (1.0 - progress) * lineOpacity * 0.85;
+        streamDirty = true;
       }
+      if (streamDirty) { streamPosAttr.needsUpdate = true; streamAlpAttr.needsUpdate = true; }
 
       renderer.render(scene, camera);
     })();
